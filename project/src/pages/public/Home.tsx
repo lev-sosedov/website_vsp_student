@@ -12,8 +12,7 @@ export default function Home() {
   return (
     <>
       {/* Hero */}
-      {/* Hero */}
-<section className="bg-white pt-16">
+  <section className="bg-white pt-16">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="relative overflow-hidden rounded-none lg:rounded-2xl">
       <img

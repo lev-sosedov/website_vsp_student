@@ -1,5 +1,5 @@
 import * as Icons from 'lucide-react';
-import { whyChooseUs } from '../../data/mockData';
+import { whyChooseUs } from '../../data/public/whyChooseUsData';
 
 export default function WhyChooseUs() {
   return (

@@ -39,9 +39,10 @@ export default function News() {
     <>
       <section className="pt-32 pb-12 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-red-600 text-sm font-semibold mb-2">Новости</p>
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Что нового в школе</h1>
-          <p className="text-lg text-gray-500 max-w-2xl">События, достижения и анонсы нашей школы.</p>
+          <p className="text-red-600 text-sm font-semibold mb-2">Медиацентр</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Жизнь школы</h1>
+          <p className="text-lg text-gray-500 max-w-2xl">Всё, что вы пропустили: события, достижения, проекты 
+            студентов и важные новости Высшей школы программирования.</p>
         </div>
       </section>
 

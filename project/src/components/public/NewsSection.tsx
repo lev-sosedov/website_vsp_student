@@ -12,7 +12,7 @@ export default function NewsSection() {
             <h2 className="section-title">Жизнь школы</h2>
           </div>
           <Link to="/news" className="text-sm font-medium text-gray-900 hover:text-red-600 transition-colors inline-flex items-center gap-1">
-            Все что Вы пропустили <ArrowRight className="w-4 h-4" />
+            Все, что вы пропустили <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
 

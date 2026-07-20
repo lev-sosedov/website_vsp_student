@@ -5,7 +5,7 @@ import { Menu, X, GraduationCap } from 'lucide-react';
 const navLinks = [
   { to: '/', label: 'Главная' },
   { to: '/about', label: 'О школе' },
-  { to: '/programs', label: 'Программы' },
+  { to: '/programs', label: 'Курсы' },
   { to: '/teachers', label: 'Преподаватели' },
   { to: '/news', label: 'Новости' },
   { to: '/reviews', label: 'Отзывы' },
@@ -61,15 +61,12 @@ export default function Navbar() {
             ))}
           </nav>
 
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center">
             <Link
               to="/login"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg transition-colors"
+              className="btn-primary text-sm py-2.5"
             >
               Войти
-            </Link>
-            <Link to="/register" className="btn-primary text-sm py-2.5">
-              Начать обучение
             </Link>
           </div>
 
@@ -95,12 +92,9 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
-            <div className="pt-3 border-t border-gray-100 flex flex-col gap-2">
-              <Link to="/login" className="btn-secondary justify-center">
+            <div className="pt-3 border-t border-gray-100">
+              <Link to="/login" className="btn-primary justify-center w-full">
                 Войти
-              </Link>
-              <Link to="/register" className="btn-primary justify-center">
-                Начать обучение
               </Link>
             </div>
           </div>

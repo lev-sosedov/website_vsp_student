@@ -14,6 +14,7 @@ const documentLinks = [
   { to: '/privacy', label: 'Политика конфиденциальности' },
   { to: '/terms', label: 'Пользовательское соглашение' },
   { to: '/personal-data', label: 'Обработка персональных данных' },
+  { to: '/license', label: 'Лицензия на образовательную деятельность' }
 ];
 
 export default function Footer() {
@@ -66,19 +67,34 @@ export default function Footer() {
             </h4>
 
             <ul className="space-y-2.5 text-sm text-gray-500">
-              <li className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span>Главный телефон</span>
+              <li>
+                <a
+                  href="tel:+78610000000"
+                  className="flex items-center gap-2 hover:text-red-600 transition-colors"
+                >
+                  <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span>+7 (861) 000-00-00</span>
+                </a>
               </li>
 
-              <li className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span>info@...</span>
+              <li>
+                <a
+                  href="mailto:nochu-cit@mail.ru"
+                  className="flex items-center gap-2 hover:text-red-600 transition-colors"
+                >
+                  <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span>nochu-cit@mail.ru</span>
+                </a>
               </li>
 
-              <li className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span>Главный филиал</span>
+              <li>
+                <Link
+                  to="/contacts"
+                  className="flex items-start gap-2 hover:text-red-600 transition-colors"
+                >
+                  <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                  <span>г. Краснодар, ул. Базовская, 254</span>
+                </Link>
               </li>
             </ul>
           </div>
@@ -112,14 +128,18 @@ export default function Footer() {
 
           <div className="flex items-center gap-4">
             <a
-              href="#"
+              href="https://vk.ru/school_programmistov"
+              target="_blank"
+              rel="noreferrer"
               className="text-sm text-gray-400 hover:text-red-600 transition-colors"
             >
               ВКонтакте
             </a>
 
             <a
-              href="#"
+              href="https://t.me/it_proger_com"
+              target="_blank"
+              rel="noreferrer"
               className="text-sm text-gray-400 hover:text-red-600 transition-colors"
             >
               Телеграм

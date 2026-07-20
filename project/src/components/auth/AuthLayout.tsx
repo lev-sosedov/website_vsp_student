@@ -1,5 +1,7 @@
 import { Outlet, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
+import heroSchool from "../../assets/images/auth/auth-school.webp";
+
 
 export default function AuthLayout() {
   return (
@@ -7,9 +9,9 @@ export default function AuthLayout() {
       {/* Left visual panel */}
       <div className="hidden lg:flex lg:w-1/2 relative">
         <img
-          src="https://images.pexels.com/photos/2076899/pexels-photo-2076899.jpeg?auto=compress&cs=tinysrgb&w=1200"
-          alt="Школа"
-          className="absolute inset-0 w-full h-full object-cover"
+          src={heroSchool}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-red-600/80 to-red-900/60" />
         <div className="relative z-10 flex flex-col justify-between p-12 text-white">

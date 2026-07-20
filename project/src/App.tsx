@@ -11,9 +11,19 @@ import News from './pages/public/News';
 import Reviews from './pages/public/Reviews';
 import Contacts from './pages/public/Contacts';
 import Privacy from './pages/public/Privacy';
+import Terms from './pages/public/Terms';
+import PersonalData from './pages/public/PersonalData';
+import License from './pages/public/License';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import ForgotPassword from './pages/auth/ForgotPassword';
+import SoftwareEngineering from './pages/public/SoftwareEngineering';
+import WebDevelopment from './pages/public/WebDevelopment';
+import SystemAdministration from './pages/public/SystemAdministration';
+import GraphicDesign3D from './pages/public/GraphicDesign3D';
+import ThreeDPrinting from './pages/public/ThreeDPrinting';
+import SummerITCamp from './pages/public/SummerITCamp';
+
 
 export default function App() {
   return (
@@ -30,6 +40,15 @@ export default function App() {
             <Route path="/reviews" element={<Reviews />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/personal-data" element={<PersonalData />} />
+            <Route path="/license" element={<License />} />
+            <Route path="/programs/software-engineering" element={<SoftwareEngineering />}/>
+            <Route path="/programs/web-development" element={<WebDevelopment />}/>
+            <Route path="/programs/system-administration" element={<SystemAdministration />}/>
+            <Route path="/programs/graphic-design-3d" element={<GraphicDesign3D />}/>
+            <Route path="/programs/3d-printing" element={<ThreeDPrinting />}/>
+            <Route path="/programs/summer-it-camp" element={<SummerITCamp />}/>
           </Route>
 
           {/* Auth */}
