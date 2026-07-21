@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   BookOpen,
@@ -12,13 +13,19 @@ import {
   UserRound,
 } from 'lucide-react';
 
+
 import { useAuth } from '../../../context/AuthContext';
-import { getPrimaryStudentGroupMembership } from '../../../api/academicApi';
+import {
+  getActiveUserGroups,
+  getGroup,
+  getPrimaryStudentGroupMembership,
+  type AcademicGroup,
+} from '../../../api/academicApi';
 import {
   formatLocalDate,
   getGroupLessonsByDateRange,
   getRoom,
-  LessonSchedule,
+  type LessonSchedule,
 } from '../../../api/scheduleApi';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -34,6 +41,12 @@ interface Teacher {
 interface DisplayLesson extends LessonSchedule {
   teacherName: string;
   roomName: string;
+  groupName: string;
+}
+
+interface TeacherGroupOption {
+  membershipId: number;
+  group: AcademicGroup;
 }
 
 interface WeekDay {
@@ -250,9 +263,35 @@ function getErrorMessage(error: unknown): string {
 
 export default function Schedule() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const normalizedRole = user?.role
+    ?.trim()
+    .toUpperCase();
+
+  const isTeacher = normalizedRole === 'TEACHER';
+
+  const requestedGroupId = Number(
+    searchParams.get('groupId')
+  );
 
   const [selectedWeekStart, setSelectedWeekStart] =
     useState<Date>(() => startOfWeek(new Date()));
+
+  const [
+    teacherGroups,
+    setTeacherGroups,
+  ] = useState<TeacherGroupOption[]>([]);
+
+  const [
+    selectedGroupId,
+    setSelectedGroupId,
+  ] = useState<number | null>(null);
+
+  const [
+    groupsLoading,
+    setGroupsLoading,
+  ] = useState(false);
 
   const [lessons, setLessons] = useState<
     DisplayLesson[]
@@ -269,6 +308,119 @@ export default function Schedule() {
     [selectedWeekStart]
   );
 
+  useEffect(() => {
+    if (!isTeacher) {
+      setTeacherGroups([]);
+      setSelectedGroupId(null);
+      return;
+    }
+
+    const teacherId = Number(user?.id);
+
+    if (
+      !Number.isInteger(teacherId) ||
+      teacherId <= 0
+    ) {
+      setTeacherGroups([]);
+      setError(
+        'Не удалось определить ID преподавателя'
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadTeacherGroups() {
+      try {
+        setGroupsLoading(true);
+        setError(null);
+
+        const memberships =
+          await getActiveUserGroups(teacherId);
+
+        const teacherMemberships =
+          memberships.filter(
+            (membership) =>
+              membership.role === 'teacher' ||
+              membership.role === 'assistant'
+          );
+
+        const uniqueMemberships = Array.from(
+          new Map(
+            teacherMemberships.map(
+              (membership) => [
+                membership.group_id,
+                membership,
+              ]
+            )
+          ).values()
+        );
+
+        const groupResults = await Promise.all(
+          uniqueMemberships.map(
+            async (membership) => ({
+              membershipId: membership.id,
+              group: await getGroup(
+                membership.group_id
+              ),
+            })
+          )
+        );
+
+        groupResults.sort((first, second) =>
+          first.group.name.localeCompare(
+            second.group.name,
+            'ru'
+          )
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setTeacherGroups(groupResults);
+
+        const requestedGroupExists =
+          Number.isInteger(requestedGroupId) &&
+          requestedGroupId > 0 &&
+          groupResults.some(
+            (item) =>
+              item.group.id === requestedGroupId
+          );
+
+        if (requestedGroupExists) {
+          setSelectedGroupId(requestedGroupId);
+        } else {
+          setSelectedGroupId(null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setTeacherGroups([]);
+          setSelectedGroupId(null);
+          setError(
+            `Не удалось загрузить группы преподавателя: ${getErrorMessage(
+              loadError
+            )}`
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setGroupsLoading(false);
+        }
+      }
+    }
+
+    void loadTeacherGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isTeacher,
+    user?.id,
+    requestedGroupId,
+  ]);
+
   const loadSchedule = async () => {
     if (!user?.id) {
       setLessons([]);
@@ -276,7 +428,10 @@ export default function Schedule() {
       setError(
         'Не удалось определить текущего пользователя'
       );
+      return;
+    }
 
+    if (isTeacher && groupsLoading) {
       return;
     }
 
@@ -284,32 +439,82 @@ export default function Schedule() {
     setError(null);
 
     try {
-      const membership =
-        await getPrimaryStudentGroupMembership(
-          user.id
-        );
-
-      if (!membership?.group_id) {
-        setLessons([]);
-        setError(
-          'Пользователь пока не добавлен в учебную группу'
-        );
-
-        return;
-      }
-
       const dateFrom =
         formatLocalDate(selectedWeekStart);
 
       const dateTo =
         formatLocalDate(selectedWeekEnd);
 
-      const weekLessons =
-        await getGroupLessonsByDateRange(
-          membership.group_id,
-          dateFrom,
-          dateTo
+      let weekLessons: LessonSchedule[] = [];
+
+      const groupNames = new Map<number, string>();
+
+      if (isTeacher) {
+        if (teacherGroups.length === 0) {
+          setLessons([]);
+          setError(
+            'Преподаватель пока не назначен ни в одну активную группу'
+          );
+          return;
+        }
+
+        teacherGroups.forEach((item) => {
+          groupNames.set(
+            item.group.id,
+            item.group.name
+          );
+        });
+
+        const groupsToLoad =
+          selectedGroupId === null
+            ? teacherGroups
+            : teacherGroups.filter(
+                (item) =>
+                  item.group.id === selectedGroupId
+              );
+
+        const lessonResponses =
+          await Promise.all(
+            groupsToLoad.map((item) =>
+              getGroupLessonsByDateRange(
+                item.group.id,
+                dateFrom,
+                dateTo
+              )
+            )
+          );
+
+        weekLessons = lessonResponses.flat();
+      } else {
+        const membership =
+          await getPrimaryStudentGroupMembership(
+            Number(user.id)
+          );
+
+        if (!membership?.group_id) {
+          setLessons([]);
+          setError(
+            'Пользователь пока не добавлен в учебную группу'
+          );
+          return;
+        }
+
+        const studentGroup = await getGroup(
+          membership.group_id
         );
+
+        groupNames.set(
+          studentGroup.id,
+          studentGroup.name
+        );
+
+        weekLessons =
+          await getGroupLessonsByDateRange(
+            membership.group_id,
+            dateFrom,
+            dateTo
+          );
+      }
 
       const teacherIds = Array.from(
         new Set(
@@ -389,6 +594,10 @@ export default function Schedule() {
               ? 'Кабинет не указан'
               : roomNames.get(lesson.room_id) ??
                 `Кабинет №${lesson.room_id}`,
+
+          groupName:
+            groupNames.get(lesson.group_id) ??
+            `Группа №${lesson.group_id}`,
         }))
         .sort((firstLesson, secondLesson) => {
           const dateComparison =
@@ -418,7 +627,14 @@ export default function Schedule() {
 
   useEffect(() => {
     void loadSchedule();
-  }, [user?.id, selectedWeekStart]);
+  }, [
+    user?.id,
+    selectedWeekStart,
+    selectedGroupId,
+    teacherGroups,
+    groupsLoading,
+    isTeacher,
+  ]);
 
   const weekDays = useMemo<WeekDay[]>(() => {
     const today = formatLocalDate(new Date());
@@ -522,6 +738,65 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {isTeacher && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <label className="block max-w-md space-y-2">
+            <span className="text-sm font-medium text-gray-700">
+              Группа
+            </span>
+
+            <select
+              value={selectedGroupId ?? ''}
+              onChange={(event) => {
+                const value = Number(
+                  event.target.value
+                );
+
+                const nextGroupId =
+                  Number.isInteger(value) &&
+                  value > 0
+                    ? value
+                    : null;
+
+                setSelectedGroupId(nextGroupId);
+
+                const nextSearchParams =
+                  new URLSearchParams(searchParams);
+
+                if (nextGroupId === null) {
+                  nextSearchParams.delete('groupId');
+                } else {
+                  nextSearchParams.set(
+                    'groupId',
+                    String(nextGroupId)
+                  );
+                }
+
+                setSearchParams(nextSearchParams);
+              }}
+              disabled={
+                groupsLoading ||
+                teacherGroups.length === 0
+              }
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <option value="">
+                Все группы
+              </option>
+
+              {teacherGroups.map((item) => (
+                <option
+                  key={item.group.id}
+                  value={item.group.id}
+                >
+                  {item.group.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {isLoading && (
         <div className="card flex min-h-72 items-center justify-center p-8">
@@ -659,6 +934,12 @@ export default function Schedule() {
                                     lesson
                                   )}
                                 </span>
+
+                                {isTeacher && (
+                                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                    {lesson.groupName}
+                                  </span>
+                                )}
 
                                 {statusLabel && (
                                   <span

@@ -80,6 +80,12 @@ export default function TeacherHomeworkReview() {
   const teacherId = user?.id;
 
   async function loadSubmissions() {
+    if (!teacherId) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -117,13 +123,19 @@ export default function TeacherHomeworkReview() {
         homeworkEntries
       );
 
-      setItems(
-        submissions.map((submission) => ({
+      const teacherItems = submissions
+        .map((submission) => ({
           submission,
           homework:
             homeworkMap.get(submission.homework_id) ?? null,
         }))
-      );
+        .filter(
+          ({ homework }) =>
+            homework !== null &&
+            homework.created_by === teacherId
+        );
+
+      setItems(teacherItems);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -136,8 +148,13 @@ export default function TeacherHomeworkReview() {
   }
 
   useEffect(() => {
-    void loadSubmissions();
-  }, []);
+    if (teacherId) {
+      void loadSubmissions();
+    } else {
+      setItems([]);
+      setLoading(false);
+    }
+  }, [teacherId]);
 
   const counters = useMemo(() => {
     return {
@@ -250,14 +267,38 @@ export default function TeacherHomeworkReview() {
       return;
     }
 
-    await runAction(
-      item.submission.id,
-      () =>
-        startHomeworkReview(
-          item.submission.id,
-          teacherId
+    try {
+      setActionLoadingId(item.submission.id);
+      setError('');
+
+      const updatedSubmission = await startHomeworkReview(
+        item.submission.id,
+        teacherId
+      );
+
+      const updatedItem: SubmissionWithHomework = {
+        ...item,
+        submission: updatedSubmission,
+      };
+
+      setItems((currentItems) =>
+        currentItems.map((currentItem) =>
+          currentItem.submission.id === updatedSubmission.id
+            ? updatedItem
+            : currentItem
         )
-    );
+      );
+
+      openReview(updatedItem);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : 'Не удалось начать проверку работы'
+      );
+    } finally {
+      setActionLoadingId(null);
+    }
   }
 
   async function handleAccept() {
@@ -366,6 +407,10 @@ export default function TeacherHomeworkReview() {
         )
     );
   }
+
+  const canReviewSelected =
+    selectedItem?.submission.status === 'submitted' ||
+    selectedItem?.submission.status === 'in_review';
 
   return (
     <div className="space-y-6">
@@ -636,7 +681,9 @@ export default function TeacherHomeworkReview() {
                             hover:border-red-200 hover:text-red-600
                           "
                         >
-                          Открыть
+                          {submission.status === 'in_review'
+                            ? 'Открыть проверку'
+                            : 'Посмотреть'}
                         </button>
                       )}
                     </div>
@@ -704,6 +751,7 @@ export default function TeacherHomeworkReview() {
                   onChange={(event) =>
                     setScore(event.target.value)
                   }
+                  disabled={!canReviewSelected}
                   placeholder={`От 0 до ${
                     selectedItem.homework?.max_score ??
                     100
@@ -729,6 +777,7 @@ export default function TeacherHomeworkReview() {
                       event.target.value
                     )
                   }
+                  disabled={!canReviewSelected}
                   rows={5}
                   placeholder="Напишите результат проверки или рекомендации"
                   className="
@@ -739,6 +788,13 @@ export default function TeacherHomeworkReview() {
                   "
                 />
               </div>
+
+              {!canReviewSelected && (
+                <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
+                  Проверка этой работы уже завершена. Результат доступен
+                  только для просмотра.
+                </div>
+              )}
 
               {error && (
                 <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -754,7 +810,8 @@ export default function TeacherHomeworkReview() {
                 onClick={() => void handleReject()}
                 disabled={
                   actionLoadingId ===
-                  selectedItem.submission.id
+                    selectedItem.submission.id ||
+                  !canReviewSelected
                 }
                 className="
                   h-11 rounded-xl border border-red-200
@@ -772,7 +829,8 @@ export default function TeacherHomeworkReview() {
                 onClick={() => void handleRevision()}
                 disabled={
                   actionLoadingId ===
-                  selectedItem.submission.id
+                    selectedItem.submission.id ||
+                  !canReviewSelected
                 }
                 className="
                   h-11 rounded-xl border border-amber-200
@@ -790,7 +848,8 @@ export default function TeacherHomeworkReview() {
                 onClick={() => void handleAccept()}
                 disabled={
                   actionLoadingId ===
-                  selectedItem.submission.id
+                    selectedItem.submission.id ||
+                  !canReviewSelected
                 }
                 className="
                   inline-flex h-11 items-center justify-center

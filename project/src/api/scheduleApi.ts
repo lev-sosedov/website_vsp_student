@@ -77,6 +77,7 @@ interface FastApiErrorResponse {
 
 function getAccessToken(): string | null {
   return (
+    localStorage.getItem('vshp_access_token') ??
     localStorage.getItem('access_token') ??
     localStorage.getItem('accessToken')
   );

@@ -33,6 +33,9 @@ import StudentDashboard from '../pages/dashboard/student/StudentDashboard';
 import ParentDashboard from '../pages/dashboard/parent/ParentDashboard';
 import TeacherDashboard from '../pages/dashboard/teacher/TeacherDashboard';
 import TeacherHomeworkReview from '../pages/dashboard/teacher/TeacherHomeworkReview';
+import TeacherAttendance from '../pages/dashboard/teacher/TeacherAttendance';
+import TeacherGroups from '../pages/dashboard/teacher/TeacherGroups';
+import TeacherStudents from '../pages/dashboard/teacher/TeacherStudents';
 import AdminDashboard from '../pages/dashboard/admin/AdminDashboard';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
@@ -157,6 +160,11 @@ const teacherNav: NavItem[] = [
     to: '/dashboard/groups',
     label: 'Мои группы',
     icon: Layers,
+  },
+  {
+  to: '/dashboard/schedule',
+  label: 'Расписание',
+  icon: Calendar,
   },
   {
     to: '/dashboard/students',
@@ -368,7 +376,11 @@ export default function DashboardRouter() {
 
         <Route
           path="attendance"
-          element={<Attendance />}
+          element={
+            currentRole === 'teacher'
+              ? <TeacherAttendance />
+              : <Attendance />
+          }
         />
 
         <Route
@@ -393,12 +405,20 @@ export default function DashboardRouter() {
 
         <Route
           path="groups"
-          element={<Schedule />}
+          element={
+            currentRole === 'teacher'
+              ? <TeacherGroups />
+              : <Progress />
+          }
         />
 
         <Route
           path="students"
-          element={<Progress />}
+          element={
+            currentRole === 'teacher'
+              ? <TeacherStudents />
+              : <Progress />
+          }
         />
 
         <Route

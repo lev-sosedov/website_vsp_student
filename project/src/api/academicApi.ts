@@ -12,6 +12,24 @@ export interface GroupMember {
   is_active: boolean;
 }
 
+export interface GroupStudent {
+  membership_id: number;
+  group_id: number;
+  user_id: number;
+
+  user_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+
+  is_active: boolean;
+}
+
+export interface GroupStudentListResponse {
+  total: number;
+  items: GroupStudent[];
+}
+
 export interface AcademicGroup {
   id: number;
   name: string;
@@ -34,6 +52,7 @@ export interface AcademicGroup {
 
 function getAccessToken(): string | null {
   return (
+    localStorage.getItem('vshp_access_token') ??
     localStorage.getItem('access_token') ??
     localStorage.getItem('accessToken')
   );
@@ -147,5 +166,17 @@ export async function getGroupTeacher(
 ): Promise<GroupMember | null> {
   return request<GroupMember | null>(
     `/api/v1/group-members/group/${groupId}/teacher`
+  );
+}
+
+/**
+ * Получить активных студентов выбранной группы
+ * вместе с данными профилей из User Service.
+ */
+export async function getGroupStudents(
+  groupId: number
+): Promise<GroupStudentListResponse> {
+  return request<GroupStudentListResponse>(
+    `/api/v1/group-members/group/${groupId}/students`
   );
 }
