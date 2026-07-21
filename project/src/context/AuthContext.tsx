@@ -8,21 +8,21 @@ import {
   type ReactNode,
 } from 'react';
 
-const AUTH_API_URL =
-  import.meta.env.VITE_AUTH_API_URL || 'http://localhost:8000';
+import {
+  login as loginRequest,
+  register as registerRequest,
+} from '../api/authApi';
+
+import {
+  getUserProfile,
+  type UserProfile,
+} from '../api/userApi';
 
 const ACCESS_TOKEN_KEY = 'vshp_access_token';
 const REFRESH_TOKEN_KEY = 'vshp_refresh_token';
 const USER_KEY = 'vshp_user';
 
-type UserRole = 'student' | 'parent' | 'teacher' | 'admin' | string;
-
-export type AuthUser = {
-  id?: string | number;
-  user_name?: string;
-  phone_number?: string;
-  role?: UserRole;
-};
+export type AuthUser = UserProfile;
 
 export type RegisterData = {
   phone_number: string;
@@ -35,20 +35,11 @@ type AuthResult = {
   error?: string;
 };
 
-type LoginResponse = {
-  access_token?: string;
-  refresh_token?: string;
-  token_type?: string;
-
-  // На случай, если backend возвращает токены внутри объекта data
-  data?: {
-    access_token?: string;
-    refresh_token?: string;
-    token_type?: string;
-    user?: AuthUser;
-  };
-
-  user?: AuthUser;
+type JwtPayload = {
+  user_id?: number;
+  role?: string;
+  exp?: number;
+  type?: string;
 };
 
 type AuthContextValue = {
@@ -61,155 +52,107 @@ type AuthContextValue = {
     password: string
   ) => Promise<AuthResult>;
 
-  register: (data: RegisterData) => Promise<AuthResult>;
+  register: (
+    data: RegisterData
+  ) => Promise<AuthResult>;
 
   logout: () => void;
 
   getAccessToken: () => string | null;
 
-  refreshAccessToken: () => Promise<string | null>;
+  refreshProfile: () => Promise<AuthResult>;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthContext =
+  createContext<AuthContextValue | null>(null);
 
-function getErrorMessage(
-  responseData: unknown,
-  fallback: string
-): string {
-  if (!responseData || typeof responseData !== 'object') {
-    return fallback;
-  }
-
-  const data = responseData as Record<string, unknown>;
-
-  if (typeof data.detail === 'string') {
-    return data.detail;
-  }
-
-  if (typeof data.message === 'string') {
-    return data.message;
-  }
-
-  if (typeof data.error === 'string') {
-    return data.error;
-  }
-
-  if (Array.isArray(data.detail)) {
-    const firstError = data.detail[0];
-
-    if (
-      firstError &&
-      typeof firstError === 'object' &&
-      'msg' in firstError &&
-      typeof firstError.msg === 'string'
-    ) {
-      return firstError.msg;
-    }
-  }
-
-  return fallback;
-}
-
-async function readResponseData(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type');
-
-  if (contentType?.includes('application/json')) {
-    return response.json();
-  }
-
-  const text = await response.text();
-
-  return text || null;
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
+/**
+ * Безопасно декодирует payload JWT.
+ *
+ * Это не проверка подписи токена.
+ * Подпись токена проверяет backend.
+ */
+function decodeJwtPayload(
+  token: string
+): JwtPayload | null {
   try {
-    const tokenParts = token.split('.');
+    const parts = token.split('.');
 
-    if (tokenParts.length !== 3) {
+    if (parts.length !== 3) {
       return null;
     }
 
-    const payload = tokenParts[1]
+    const base64Url = parts[1];
+
+    const base64 = base64Url
       .replace(/-/g, '+')
       .replace(/_/g, '/');
 
-    const decodedPayload = decodeURIComponent(
-      window
-        .atob(payload)
-        .split('')
-        .map(
-          (character) =>
-            `%${character
-              .charCodeAt(0)
-              .toString(16)
-              .padStart(2, '0')}`
-        )
-        .join('')
+    const paddingLength =
+      (4 - (base64.length % 4)) % 4;
+
+    const paddedBase64 = base64.padEnd(
+      base64.length + paddingLength,
+      '='
     );
 
-    return JSON.parse(decodedPayload) as Record<string, unknown>;
-  } catch {
+    const decoded = window.atob(paddedBase64);
+
+    const bytes = Uint8Array.from(
+      decoded,
+      (character) => character.charCodeAt(0)
+    );
+
+    const json = new TextDecoder().decode(bytes);
+
+    return JSON.parse(json) as JwtPayload;
+  } catch (error) {
+    console.error(
+      'Не удалось декодировать JWT:',
+      error
+    );
+
     return null;
   }
 }
 
-function createUserFromToken(token: string): AuthUser | null {
+/**
+ * Проверяет срок действия access token.
+ */
+function isTokenExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
 
-  if (!payload) {
+  if (!payload?.exp) {
+    return false;
+  }
+
+  return payload.exp * 1000 <= Date.now();
+}
+
+/**
+ * Получает user_id из access token.
+ */
+function getUserIdFromToken(
+  token: string
+): number | null {
+  const payload = decodeJwtPayload(token);
+
+  if (
+    !payload?.user_id ||
+    typeof payload.user_id !== 'number'
+  ) {
     return null;
   }
 
-  const id =
-    payload.user_id ??
-    payload.id ??
-    payload.sub;
-
-  const userName =
-    payload.user_name ??
-    payload.username ??
-    payload.name;
-
-  const phoneNumber =
-    payload.phone_number ??
-    payload.phone;
-
-  const role = payload.role;
-
-  return {
-    id:
-      typeof id === 'string' || typeof id === 'number'
-        ? id
-        : undefined,
-
-    user_name:
-      typeof userName === 'string'
-        ? userName
-        : undefined,
-
-    phone_number:
-      typeof phoneNumber === 'string'
-        ? phoneNumber
-        : undefined,
-
-    role:
-      typeof role === 'string'
-        ? role
-        : undefined,
-  };
+  return payload.user_id;
 }
 
-function saveUser(user: AuthUser | null) {
-  if (user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(USER_KEY);
-  }
-}
-
+/**
+ * Читает ранее сохранённый профиль.
+ */
 function getStoredUser(): AuthUser | null {
-  const storedUser = localStorage.getItem(USER_KEY);
+  const storedUser =
+    localStorage.getItem(USER_KEY);
 
   if (!storedUser) {
     return null;
@@ -217,29 +160,34 @@ function getStoredUser(): AuthUser | null {
 
   try {
     return JSON.parse(storedUser) as AuthUser;
-  } catch {
+  } catch (error) {
+    console.error(
+      'Не удалось прочитать пользователя из localStorage:',
+      error
+    );
+
     localStorage.removeItem(USER_KEY);
+
     return null;
   }
 }
 
-function extractTokens(data: LoginResponse) {
-  return {
-    accessToken:
-      data.access_token ??
-      data.data?.access_token ??
-      null,
+/**
+ * Преобразует неизвестную ошибку в понятный текст.
+ */
+function getErrorMessage(
+  error: unknown,
+  fallbackMessage: string
+): string {
+  if (error instanceof Error) {
+    return error.message || fallbackMessage;
+  }
 
-    refreshToken:
-      data.refresh_token ??
-      data.data?.refresh_token ??
-      null,
+  if (typeof error === 'string') {
+    return error || fallbackMessage;
+  }
 
-    user:
-      data.user ??
-      data.data?.user ??
-      null,
-  };
+  return fallbackMessage;
 }
 
 export function AuthProvider({
@@ -247,12 +195,18 @@ export function AuthProvider({
 }: {
   children: ReactNode;
 }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [accessToken, setAccessToken] = useState<string | null>(
-    null
-  );
+  const [user, setUser] =
+    useState<AuthUser | null>(null);
 
+  const [accessToken, setAccessToken] =
+    useState<string | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  /**
+   * Полностью очищает локальные данные авторизации.
+   */
   const clearAuthData = useCallback(() => {
     setUser(null);
     setAccessToken(null);
@@ -262,272 +216,334 @@ export function AuthProvider({
     localStorage.removeItem(USER_KEY);
   }, []);
 
-  const saveAuthData = useCallback(
+  /**
+   * Сохраняет токены.
+   */
+  const saveTokens = useCallback(
     (
       newAccessToken: string,
-      newRefreshToken?: string | null,
-      responseUser?: AuthUser | null
+      newRefreshToken: string
     ) => {
       localStorage.setItem(
         ACCESS_TOKEN_KEY,
         newAccessToken
       );
 
-      if (newRefreshToken) {
-        localStorage.setItem(
-          REFRESH_TOKEN_KEY,
-          newRefreshToken
-        );
-      }
-
-      const tokenUser = createUserFromToken(newAccessToken);
-      const authenticatedUser =
-        responseUser ?? tokenUser ?? {};
+      localStorage.setItem(
+        REFRESH_TOKEN_KEY,
+        newRefreshToken
+      );
 
       setAccessToken(newAccessToken);
-      setUser(authenticatedUser);
-      saveUser(authenticatedUser);
     },
     []
   );
 
-  const refreshAccessToken =
-    useCallback(async (): Promise<string | null> => {
-      const refreshToken = localStorage.getItem(
-        REFRESH_TOKEN_KEY
+  /**
+   * Сохраняет полный профиль пользователя.
+   */
+  const saveUser = useCallback(
+    (profile: AuthUser) => {
+      localStorage.setItem(
+        USER_KEY,
+        JSON.stringify(profile)
       );
 
-      if (!refreshToken) {
+      setUser(profile);
+    },
+    []
+  );
+
+  /**
+   * Загружает полный профиль пользователя
+   * через API Gateway.
+   */
+  const loadUserProfile = useCallback(
+    async (
+      token: string,
+      userId?: number
+    ): Promise<AuthUser> => {
+      const resolvedUserId =
+        userId ?? getUserIdFromToken(token);
+
+      if (!resolvedUserId) {
+        throw new Error(
+          'В access token отсутствует идентификатор пользователя'
+        );
+      }
+
+      const profile = await getUserProfile(
+        resolvedUserId,
+        token
+      );
+
+      saveUser(profile);
+
+      return profile;
+    },
+    [saveUser]
+  );
+
+  /**
+   * Восстанавливает авторизацию после F5
+   * или повторного открытия сайта.
+   */
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreAuth = async () => {
+      const storedAccessToken =
+        localStorage.getItem(ACCESS_TOKEN_KEY);
+
+      if (!storedAccessToken) {
+        if (isMounted) {
+          setLoading(false);
+        }
+
+        return;
+      }
+
+      if (isTokenExpired(storedAccessToken)) {
         clearAuthData();
-        return null;
+
+        if (isMounted) {
+          setLoading(false);
+        }
+
+        return;
+      }
+
+      setAccessToken(storedAccessToken);
+
+      const storedUser = getStoredUser();
+
+      if (storedUser && isMounted) {
+        setUser(storedUser);
       }
 
       try {
-        const response = await fetch(
-          `${AUTH_API_URL}/api/v1/auth/refresh`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              refresh_token: refreshToken,
-            }),
-          }
+        await loadUserProfile(storedAccessToken);
+      } catch (error) {
+        console.error(
+          'Не удалось обновить профиль при восстановлении авторизации:',
+          error
         );
 
-        const responseData = await readResponseData(response);
-
-        if (!response.ok) {
+        /*
+         * Если Gateway временно недоступен, но в localStorage
+         * уже есть профиль, не выбрасываем пользователя из кабинета.
+         */
+        if (!storedUser) {
           clearAuthData();
-          return null;
         }
-
-        const tokenData = responseData as LoginResponse;
-        const {
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
-          user: responseUser,
-        } = extractTokens(tokenData);
-
-        if (!newAccessToken) {
-          clearAuthData();
-          return null;
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
-
-        saveAuthData(
-          newAccessToken,
-          newRefreshToken ?? refreshToken,
-          responseUser
-        );
-
-        return newAccessToken;
-      } catch {
-        clearAuthData();
-        return null;
       }
-    }, [clearAuthData, saveAuthData]);
-
-  useEffect(() => {
-    const restoreAuth = async () => {
-      const storedAccessToken = localStorage.getItem(
-        ACCESS_TOKEN_KEY
-      );
-
-      if (!storedAccessToken) {
-        setLoading(false);
-        return;
-      }
-
-      const payload = decodeJwtPayload(storedAccessToken);
-      const expiresAt =
-        typeof payload?.exp === 'number'
-          ? payload.exp * 1000
-          : null;
-
-      if (expiresAt && expiresAt <= Date.now()) {
-        await refreshAccessToken();
-        setLoading(false);
-        return;
-      }
-
-      const storedUser = getStoredUser();
-      const tokenUser = createUserFromToken(storedAccessToken);
-
-      setAccessToken(storedAccessToken);
-      setUser(storedUser ?? tokenUser ?? {});
-
-      setLoading(false);
     };
 
     void restoreAuth();
-  }, [refreshAccessToken]);
 
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    clearAuthData,
+    loadUserProfile,
+  ]);
+
+  /**
+   * Вход по номеру телефона и паролю.
+   */
   const login = useCallback(
     async (
       phoneNumber: string,
       password: string
     ): Promise<AuthResult> => {
       try {
-        const response = await fetch(
-          `${AUTH_API_URL}/api/v1/auth/login`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              phone_number: phoneNumber,
-              password,
-            }),
-          }
-        );
+        const loginData = await loginRequest({
+          phone_number: phoneNumber,
+          password,
+        });
 
-        const responseData = await readResponseData(response);
-
-        if (!response.ok) {
-          return {
-            success: false,
-            error: getErrorMessage(
-              responseData,
-              response.status === 401
-                ? 'Неверный номер телефона или пароль'
-                : 'Не удалось выполнить вход'
-            ),
-          };
-        }
-
-        const tokenData = responseData as LoginResponse;
-        const {
-          accessToken: newAccessToken,
-          refreshToken,
-          user: responseUser,
-        } = extractTokens(tokenData);
-
-        if (!newAccessToken) {
+        if (
+          !loginData.access_token ||
+          !loginData.refresh_token
+        ) {
           return {
             success: false,
             error:
-              'Сервер не вернул access token. Проверьте ответ auth_service.',
+              'Сервер не вернул токены авторизации',
           };
         }
 
-        saveAuthData(
-          newAccessToken,
-          refreshToken,
-          responseUser
+        const userId = getUserIdFromToken(
+          loginData.access_token
         );
 
-        return {
-          success: true,
-        };
-      } catch {
-        return {
-          success: false,
-          error:
-            'Не удалось подключиться к серверу авторизации',
-        };
-      }
-    },
-    [saveAuthData]
-  );
+        if (!userId) {
+          return {
+            success: false,
+            error:
+              'В access token отсутствует идентификатор пользователя',
+          };
+        }
 
-  const register = useCallback(
-    async (data: RegisterData): Promise<AuthResult> => {
-      try {
-        const response = await fetch(
-          `${AUTH_API_URL}/api/v1/auth/register`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              phone_number: data.phone_number,
-              password: data.password,
-              user_name: data.user_name,
-            }),
-          }
+        saveTokens(
+          loginData.access_token,
+          loginData.refresh_token
         );
 
-        const responseData = await readResponseData(response);
+        try {
+          await loadUserProfile(
+            loginData.access_token,
+            userId
+          );
+        } catch (profileError) {
+          /*
+           * Если токены уже получены, но профиль не загрузился,
+           * очищаем данные, чтобы не оставить неполный вход.
+           */
+          clearAuthData();
 
-        if (!response.ok) {
           return {
             success: false,
             error: getErrorMessage(
-              responseData,
-              response.status === 409
-                ? 'Пользователь с таким номером уже существует'
-                : 'Не удалось создать аккаунт'
+              profileError,
+              'Вход выполнен, но не удалось загрузить профиль пользователя'
             ),
           };
         }
 
-        /*
-         * После регистрации пользователь не авторизуется
-         * автоматически. Register.tsx перенаправит его
-         * на страницу входа.
-         */
+        return {
+          success: true,
+        };
+      } catch (error) {
+        console.error('Ошибка входа:', error);
+
+        return {
+          success: false,
+          error: getErrorMessage(
+            error,
+            'Не удалось выполнить вход'
+          ),
+        };
+      }
+    },
+    [
+      clearAuthData,
+      loadUserProfile,
+      saveTokens,
+    ]
+  );
+
+  /**
+   * Регистрация пользователя.
+   *
+   * После регистрации backend пока не выдаёт JWT,
+   * поэтому пользователь должен войти отдельно.
+   */
+  const register = useCallback(
+    async (
+      data: RegisterData
+    ): Promise<AuthResult> => {
+      try {
+        await registerRequest({
+          phone_number: data.phone_number,
+          password: data.password,
+          user_name: data.user_name,
+        });
 
         return {
           success: true,
         };
-      } catch {
+      } catch (error) {
+        console.error(
+          'Ошибка регистрации:',
+          error
+        );
+
         return {
           success: false,
-          error:
-            'Не удалось подключиться к серверу регистрации',
+          error: getErrorMessage(
+            error,
+            'Не удалось создать аккаунт'
+          ),
         };
       }
     },
     []
   );
 
+  /**
+   * Обновляет профиль пользователя вручную.
+   *
+   * Пригодится после изменения имени,
+   * телефона, аватара или других данных.
+   */
+  const refreshProfile = useCallback(
+    async (): Promise<AuthResult> => {
+      const token =
+        accessToken ??
+        localStorage.getItem(ACCESS_TOKEN_KEY);
+
+      if (!token) {
+        return {
+          success: false,
+          error:
+            'Пользователь не авторизован',
+        };
+      }
+
+      if (isTokenExpired(token)) {
+        clearAuthData();
+
+        return {
+          success: false,
+          error:
+            'Срок действия сессии истёк',
+        };
+      }
+
+      try {
+        await loadUserProfile(token);
+
+        return {
+          success: true,
+        };
+      } catch (error) {
+        console.error(
+          'Ошибка обновления профиля:',
+          error
+        );
+
+        return {
+          success: false,
+          error: getErrorMessage(
+            error,
+            'Не удалось обновить профиль'
+          ),
+        };
+      }
+    },
+    [
+      accessToken,
+      clearAuthData,
+      loadUserProfile,
+    ]
+  );
+
+  /**
+   * Локальный выход из аккаунта.
+   */
   const logout = useCallback(() => {
-    const refreshToken = localStorage.getItem(
-      REFRESH_TOKEN_KEY
-    );
-
     clearAuthData();
-
-    if (!refreshToken) {
-      return;
-    }
-
-    void fetch(`${AUTH_API_URL}/api/v1/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        refresh_token: refreshToken,
-      }),
-    }).catch(() => {
-      // Локальный выход уже выполнен.
-    });
   }, [clearAuthData]);
 
+  /**
+   * Возвращает текущий access token.
+   */
   const getAccessToken = useCallback(() => {
     return (
       accessToken ??
@@ -535,28 +551,33 @@ export function AuthProvider({
     );
   }, [accessToken]);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      isAuthenticated: Boolean(accessToken),
-      loading,
-      login,
-      register,
-      logout,
-      getAccessToken,
-      refreshAccessToken,
-    }),
-    [
-      user,
-      accessToken,
-      loading,
-      login,
-      register,
-      logout,
-      getAccessToken,
-      refreshAccessToken,
-    ]
-  );
+  const value =
+    useMemo<AuthContextValue>(
+      () => ({
+        user,
+
+        isAuthenticated:
+          Boolean(accessToken && user),
+
+        loading,
+
+        login,
+        register,
+        logout,
+        getAccessToken,
+        refreshProfile,
+      }),
+      [
+        user,
+        accessToken,
+        loading,
+        login,
+        register,
+        logout,
+        getAccessToken,
+        refreshProfile,
+      ]
+    );
 
   return (
     <AuthContext.Provider value={value}>
