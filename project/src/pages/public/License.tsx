@@ -4,7 +4,6 @@ import {
   Building2,
   CalendarDays,
   Download,
-  ExternalLink,
   FileCheck2,
   GraduationCap,
   MapPin,

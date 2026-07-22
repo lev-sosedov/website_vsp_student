@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, MapPin, Phone, Mail, Clock } from 'lucide-react';
+import { ArrowRight, MapPin} from 'lucide-react';
 import { stats } from '../../data/public/statsData';
 import NewsSection from '../../components/public/NewsSection';
 import ProgramsSection from '../../components/public/ProgramsSection';

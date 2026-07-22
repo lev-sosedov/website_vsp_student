@@ -61,3 +61,5 @@ export interface Review {
   text: string;
   photo: string;
 }
+
+export * from './chat';

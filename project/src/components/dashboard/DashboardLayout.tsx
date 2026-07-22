@@ -1,5 +1,12 @@
-import { useMemo, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import {
+  NavLink,
+  useNavigate,
+} from 'react-router-dom';
 import {
   Bell,
   GraduationCap,
@@ -9,6 +16,9 @@ import {
   X,
 } from 'lucide-react';
 
+import {
+  getUserUnreadCount,
+} from '../../api/chatApi';
 import { useAuth } from '../../context/AuthContext';
 
 export interface NavItem {
@@ -112,6 +122,14 @@ function getRoleLabel(
   return roleLabels[normalizedRole] ?? fallbackLabel;
 }
 
+function formatUnreadCount(
+  unreadCount: number
+): string {
+  return unreadCount > 99
+    ? '99+'
+    : String(unreadCount);
+}
+
 export default function DashboardLayout({
   navItems,
   roleLabel,
@@ -121,6 +139,11 @@ export default function DashboardLayout({
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
+
+  const [
+    totalUnreadMessages,
+    setTotalUnreadMessages,
+  ] = useState(0);
 
   const displayName = useMemo(
     () =>
@@ -161,24 +184,94 @@ export default function DashboardLayout({
     [user?.role, roleLabel]
   );
 
+  useEffect(() => {
+  if (user?.id == null) {
+    setTotalUnreadMessages(0);
+    return;
+  }
+
+  const userId: number = user.id;
+
+  let isMounted = true;
+
+  async function loadUnreadMessages(): Promise<void> {
+    try {
+      const response = await getUserUnreadCount(userId);
+
+      if (isMounted) {
+        setTotalUnreadMessages(
+          Math.max(0, response.unread_count)
+        );
+      }
+    } catch (requestError) {
+      console.error(
+        'Не удалось получить общий счётчик непрочитанных сообщений:',
+        requestError
+      );
+    }
+  }
+
+  void loadUnreadMessages();
+
+  const intervalId = window.setInterval(() => {
+    void loadUnreadMessages();
+  }, 5000);
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      void loadUnreadMessages();
+    }
+  };
+
+  const handleWindowFocus = () => {
+    void loadUnreadMessages();
+  };
+
+  document.addEventListener(
+    'visibilitychange',
+    handleVisibilityChange
+  );
+
+  window.addEventListener(
+    'focus',
+    handleWindowFocus
+  );
+
+  return () => {
+    isMounted = false;
+
+    window.clearInterval(intervalId);
+
+    document.removeEventListener(
+      'visibilitychange',
+      handleVisibilityChange
+    );
+
+    window.removeEventListener(
+      'focus',
+      handleWindowFocus
+    );
+  };
+}, [user?.id]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex min-h-screen bg-gray-50">
       <aside
-        className={`fixed lg:sticky top-0 left-0 h-screen w-64 bg-white border-r border-gray-100 z-40 flex flex-col transition-transform duration-300 ${
+        className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-gray-100 bg-white transition-transform duration-300 lg:sticky ${
           open
             ? 'translate-x-0'
             : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="h-16 flex items-center justify-between px-5 border-b border-gray-100">
+        <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
-              <GraduationCap className="w-5 h-5 text-white" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600">
+              <GraduationCap className="h-5 w-5 text-white" />
             </div>
 
             <span className="font-bold text-gray-900">
@@ -192,26 +285,26 @@ export default function DashboardLayout({
             onClick={() => setOpen(false)}
             aria-label="Закрыть меню"
           >
-            <X className="w-5 h-5 text-gray-400" />
+            <X className="h-5 w-5 text-gray-400" />
           </button>
         </div>
 
-        <div className="px-4 py-4 border-b border-gray-100">
+        <div className="border-b border-gray-100 px-4 py-4">
           <div className="flex items-center gap-3">
             {user?.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt={displayName}
-                className="w-10 h-10 rounded-full object-cover"
+                className="h-10 w-10 rounded-full object-cover"
               />
             ) : (
-              <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center text-red-600 font-semibold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 font-semibold text-red-600">
                 {initials}
               </div>
             )}
 
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">
+              <p className="truncate text-sm font-semibold text-gray-900">
                 {displayName}
               </p>
 
@@ -222,32 +315,53 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to.endsWith('/dashboard')}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                isActive
-                  ? 'sidebar-link-active'
-                  : 'sidebar-link'
-              }
-            >
-              <item.icon className="w-5 h-5" />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          {navItems.map((item) => {
+            const isMessagesItem =
+              item.to === '/dashboard/messages';
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to.endsWith('/dashboard')}
+                onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  isActive
+                    ? 'sidebar-link-active'
+                    : 'sidebar-link'
+                }
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+
+                <span className="min-w-0 flex-1 truncate">
+                  {item.label}
+                </span>
+
+                {isMessagesItem &&
+                  totalUnreadMessages > 0 && (
+                    <span
+                      className="ml-auto inline-flex min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                      title={`${totalUnreadMessages} непрочитанных сообщений`}
+                      aria-label={`${totalUnreadMessages} непрочитанных сообщений`}
+                    >
+                      {formatUnreadCount(
+                        totalUnreadMessages
+                      )}
+                    </span>
+                  )}
+              </NavLink>
+            );
+          })}
         </nav>
 
-        <div className="p-3 border-t border-gray-100">
+        <div className="border-t border-gray-100 p-3">
           <button
             type="button"
             onClick={handleLogout}
             className="sidebar-link w-full text-red-600 hover:bg-red-50"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="h-5 w-5" />
             <span>Выйти</span>
           </button>
         </div>
@@ -256,52 +370,52 @@ export default function DashboardLayout({
       {open && (
         <button
           type="button"
-          className="fixed inset-0 bg-black/30 z-30 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
           onClick={() => setOpen(false)}
           aria-label="Закрыть боковое меню"
         />
       )}
 
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-16 bg-white border-b border-gray-100 sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gray-100 bg-white px-4 sm:px-6">
           <button
             type="button"
-            className="lg:hidden p-2 -ml-2"
+            className="-ml-2 p-2 lg:hidden"
             onClick={() => setOpen(true)}
             aria-label="Открыть меню"
           >
-            <Menu className="w-5 h-5 text-gray-600" />
+            <Menu className="h-5 w-5 text-gray-600" />
           </button>
 
-          <div className="hidden sm:flex items-center gap-2 flex-1 max-w-md">
-            <Search className="w-4 h-4 text-gray-400" />
+          <div className="hidden max-w-md flex-1 items-center gap-2 sm:flex">
+            <Search className="h-4 w-4 text-gray-400" />
 
             <input
               type="search"
               placeholder="Поиск..."
-              className="bg-transparent text-sm outline-none flex-1 text-gray-700 placeholder-gray-400"
+              className="flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder-gray-400"
             />
           </div>
 
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <button
               type="button"
-              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
               aria-label="Уведомления"
             >
-              <Bell className="w-5 h-5 text-gray-600" />
+              <Bell className="h-5 w-5 text-gray-600" />
 
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
             </button>
 
             {user?.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt={displayName}
-                className="w-9 h-9 rounded-full object-cover"
+                className="h-9 w-9 rounded-full object-cover"
               />
             ) : (
-              <div className="w-9 h-9 bg-red-50 rounded-full flex items-center justify-center text-red-600 font-semibold text-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-sm font-semibold text-red-600">
                 {initials}
               </div>
             )}
