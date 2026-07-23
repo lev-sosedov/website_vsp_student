@@ -8,11 +8,9 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import {
-  Bell,
   GraduationCap,
   LogOut,
   Menu,
-  Search,
   X,
 } from 'lucide-react';
 
@@ -269,7 +267,12 @@ export default function DashboardLayout({
         }`}
       >
         <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
-          <div className="flex items-center gap-2">
+          <NavLink
+            to="/dashboard"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+            aria-label="Перейти на дашборд"
+          >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600">
               <GraduationCap className="h-5 w-5 text-white" />
             </div>
@@ -277,7 +280,7 @@ export default function DashboardLayout({
             <span className="font-bold text-gray-900">
               ВШП Студент
             </span>
-          </div>
+          </NavLink>
 
           <button
             type="button"
@@ -377,49 +380,15 @@ export default function DashboardLayout({
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gray-100 bg-white px-4 sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-gray-100 bg-white px-4 sm:px-6 lg:hidden">
           <button
             type="button"
-            className="-ml-2 p-2 lg:hidden"
+            className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
             onClick={() => setOpen(true)}
             aria-label="Открыть меню"
           >
             <Menu className="h-5 w-5 text-gray-600" />
           </button>
-
-          <div className="hidden max-w-md flex-1 items-center gap-2 sm:flex">
-            <Search className="h-4 w-4 text-gray-400" />
-
-            <input
-              type="search"
-              placeholder="Поиск..."
-              className="flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder-gray-400"
-            />
-          </div>
-
-          <div className="ml-auto flex items-center gap-3">
-            <button
-              type="button"
-              className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
-              aria-label="Уведомления"
-            >
-              <Bell className="h-5 w-5 text-gray-600" />
-
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-            </button>
-
-            {user?.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt={displayName}
-                className="h-9 w-9 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-sm font-semibold text-red-600">
-                {initials}
-              </div>
-            )}
-          </div>
         </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">

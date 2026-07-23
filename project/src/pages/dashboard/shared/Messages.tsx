@@ -37,6 +37,11 @@ import {
   type ChatSocketStatus,
 } from '../../../api/chatSocket';
 
+import {
+  getUsersByIds,
+  type UserProfile,
+} from '../../../api/userApi';
+
 import type {
   Chat,
   ChatMessage,
@@ -121,9 +126,42 @@ function getEmbeddedLastMessage(
   );
 }
 
+function getUserDisplayName(
+  user: UserProfile | undefined,
+  userId: number
+): string {
+  if (!user) {
+    return `Пользователь #${userId}`;
+  }
+
+  const fullName = [
+    user.first_name,
+    user.last_name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return (
+    fullName ||
+    user.user_name?.trim() ||
+    `Пользователь #${userId}`
+  );
+}
+
+function getUserInitials(
+  user: UserProfile | undefined,
+  userId: number
+): string {
+  return getInitials(
+    getUserDisplayName(user, userId)
+  );
+}
+
 function getMessagePreview(
   message: ChatMessage,
-  currentUserId: number | null
+  currentUserId: number | null,
+  usersById: Record<number, UserProfile>
 ): string {
   if (message.is_deleted) {
     return 'Сообщение удалено';
@@ -136,7 +174,10 @@ function getMessagePreview(
     return `Вы: ${content}`;
   }
 
-  return `Пользователь #${message.sender_id}: ${content}`;
+  return `${getUserDisplayName(
+    usersById[message.sender_id],
+    message.sender_id
+  )}: ${content}`;
 }
 
 function getInitials(title: string): string {
@@ -355,6 +396,9 @@ export default function Messages() {
   const [typingUserIds, setTypingUserIds] =
     useState<Set<number>>(new Set());
 
+  const [usersById, setUsersById] =
+    useState<Record<number, UserProfile>>({});
+
   const [
     hasUnreadIncomingMessages,
     setHasUnreadIncomingMessages,
@@ -449,7 +493,8 @@ export default function Messages() {
       const lastMessageText = lastMessage
         ? getMessagePreview(
             lastMessage,
-            currentUserId
+            currentUserId,
+            usersById
           ).toLowerCase()
         : '';
 
@@ -464,6 +509,7 @@ export default function Messages() {
     searchValue,
     lastMessageByChatId,
     currentUserId,
+    usersById,
   ]);
 
   const rememberLastMessage = useCallback(
@@ -799,6 +845,58 @@ export default function Messages() {
       clearUnreadCount,
     ]
   );
+
+  useEffect(() => {
+    const userIds = [
+      ...new Set([
+        ...chatMessages.map(
+          (message) => message.sender_id
+        ),
+        ...typingUserIds,
+        ...onlineUserIds,
+      ]),
+    ].filter(
+      (userId) =>
+        userId > 0 &&
+        !usersById[userId]
+    );
+
+    if (userIds.length === 0) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void getUsersByIds(userIds)
+      .then((loadedUsers) => {
+        if (
+          isCancelled ||
+          Object.keys(loadedUsers).length === 0
+        ) {
+          return;
+        }
+
+        setUsersById((currentUsers) => ({
+          ...currentUsers,
+          ...loadedUsers,
+        }));
+      })
+      .catch((userError) => {
+        console.error(
+          'Не удалось загрузить данные пользователей:',
+          userError
+        );
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    chatMessages,
+    typingUserIds,
+    onlineUserIds,
+    usersById,
+  ]);
 
   useEffect(() => {
     void loadChats();
@@ -1892,7 +1990,8 @@ export default function Messages() {
                             lastMessage
                               ? getMessagePreview(
                                   lastMessage,
-                                  currentUserId
+                                  currentUserId,
+                                  usersById
                                 )
                               : chat.description ||
                                 'Сообщений пока нет'
@@ -1901,7 +2000,8 @@ export default function Messages() {
                           {lastMessage
                             ? getMessagePreview(
                                 lastMessage,
-                                currentUserId
+                                currentUserId,
+                                usersById
                               )
                             : chat.description ||
                               'Сообщений пока нет'}
@@ -1968,9 +2068,12 @@ export default function Messages() {
                     {typingUserIds.size > 0 && (
                       <span className="font-medium text-red-500">
                         {typingUserIds.size === 1
-                          ? `Пользователь #${
+                          ? `${getUserDisplayName(
+                              usersById[
+                                [...typingUserIds][0]
+                              ],
                               [...typingUserIds][0]
-                            } печатает...`
+                            )} печатает...`
                           : `${typingUserIds.size} пользователя печатают...`}
                       </span>
                     )}
@@ -2048,6 +2151,15 @@ export default function Messages() {
                     const isPendingMessage =
                       message.id < 0;
 
+                    const senderProfile =
+                      usersById[message.sender_id];
+
+                    const senderName =
+                      getUserDisplayName(
+                        senderProfile,
+                        message.sender_id
+                      );
+
                     const repliedMessage =
                       message.reply_to_message_id
                         ? chatMessages.find(
@@ -2109,6 +2221,27 @@ export default function Messages() {
                             : 'justify-start'
                         }`}
                       >
+                        {!isOwnMessage && (
+                          <div className="mr-2 mt-auto flex h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-red-100 text-[11px] font-semibold text-red-600">
+                            {senderProfile?.avatar_url ? (
+                              <img
+                                src={
+                                  senderProfile.avatar_url
+                                }
+                                alt={senderName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="m-auto">
+                                {getUserInitials(
+                                  senderProfile,
+                                  message.sender_id
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div
                           className={`group max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm sm:max-w-md ${
                             isOwnMessage
@@ -2118,8 +2251,7 @@ export default function Messages() {
                         >
                           {!isOwnMessage && (
                             <p className="mb-1 text-xs font-medium text-red-600">
-                              Пользователь #
-                              {message.sender_id}
+                              {senderName}
                             </p>
                           )}
 
@@ -2144,9 +2276,16 @@ export default function Messages() {
                                     : 'text-red-600'
                                 }`}
                               >
-                                Ответ пользователю #
-                                {repliedMessage?.sender_id ??
-                                  '...'}
+                                Ответ: {
+                                  repliedMessage
+                                    ? getUserDisplayName(
+                                        usersById[
+                                          repliedMessage.sender_id
+                                        ],
+                                        repliedMessage.sender_id
+                                      )
+                                    : 'пользователь'
+                                }
                               </span>
 
                               <span
@@ -2428,8 +2567,12 @@ export default function Messages() {
 
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-red-600">
-                        Ответ пользователю #
-                        {replyToMessage.sender_id}
+                        Ответ: {getUserDisplayName(
+                          usersById[
+                            replyToMessage.sender_id
+                          ],
+                          replyToMessage.sender_id
+                        )}
                       </p>
 
                       <p className="truncate text-xs text-gray-600">

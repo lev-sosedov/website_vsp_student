@@ -12,10 +12,8 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
-  FileText,
   Loader2,
   MessageSquare,
-  RefreshCw,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -37,6 +35,17 @@ import {
 } from '../../../api/academicApi';
 
 import {
+  getTodayLessons,
+} from '../../../api/scheduleApi';
+
+import {
+  getGroupHomeworks,
+  getHomeworkSubmissions,
+  type Homework,
+  type HomeworkSubmission,
+} from '../../../api/homeworkApi';
+
+import {
   notifications,
 } from '../../../data/dashboardData';
 
@@ -44,12 +53,17 @@ interface TeacherDashboardGroup {
   membershipId: number;
   group: AcademicGroup;
   students: GroupStudent[];
+  homeworks: Homework[];
+  submissions: HomeworkSubmission[];
 }
 
 interface UniqueStudentItem {
   student: GroupStudent;
   groupIds: number[];
   groupNames: string[];
+  assignedCount: number;
+  acceptedCount: number;
+  outstandingCount: number;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -115,6 +129,17 @@ export default function TeacherDashboard() {
   ] = useState<TeacherDashboardGroup[]>([]);
 
   const [
+    todayLessonsCount,
+    setTodayLessonsCount,
+  ] = useState(0);
+
+
+  const [
+    submissionsToReviewCount,
+    setSubmissionsToReviewCount,
+  ] = useState(0);
+
+  const [
     loading,
     setLoading,
   ] = useState(true);
@@ -130,6 +155,8 @@ export default function TeacherDashboard() {
       teacherId <= 0
     ) {
       setGroups([]);
+      setTodayLessonsCount(0);
+      setSubmissionsToReviewCount(0);
       setLoading(false);
       setError(
         'Не удалось определить ID преподавателя'
@@ -168,11 +195,21 @@ export default function TeacherDashboard() {
             const [
               group,
               studentsResponse,
+              homeworks,
+              submissionsResponse,
             ] = await Promise.all([
               getGroup(membership.group_id),
               getGroupStudents(
                 membership.group_id
               ),
+              getGroupHomeworks(
+                membership.group_id
+              ),
+              getHomeworkSubmissions({
+                groupId: membership.group_id,
+                skip: 0,
+                limit: 500,
+              }),
             ]);
 
             return {
@@ -183,6 +220,8 @@ export default function TeacherDashboard() {
                   (student) =>
                     student.is_active
                 ),
+              homeworks,
+              submissions: submissionsResponse.items,
             };
           }
         )
@@ -195,7 +234,42 @@ export default function TeacherDashboard() {
         )
       );
 
+      const todayLessonsByGroup =
+        await Promise.all(
+          loadedGroups.map((groupItem) =>
+            getTodayLessons(
+              groupItem.group.id
+            )
+          )
+        );
+
+      const todayLessonsTotal =
+        todayLessonsByGroup.reduce(
+          (total, lessons) =>
+            total + lessons.length,
+          0
+        );
+
+      const submissionsToReview = new Set<number>();
+
+      loadedGroups.forEach((groupItem) => {
+        groupItem.submissions.forEach((submission) => {
+          if (
+            submission.status === 'submitted' ||
+            submission.status === 'in_review'
+          ) {
+            submissionsToReview.add(submission.id);
+          }
+        });
+      });
+
       setGroups(loadedGroups);
+      setTodayLessonsCount(
+        todayLessonsTotal
+      );
+      setSubmissionsToReviewCount(
+        submissionsToReview.size
+      );
     } catch (loadError) {
       console.error(
         'Не удалось загрузить дашборд преподавателя:',
@@ -203,6 +277,8 @@ export default function TeacherDashboard() {
       );
 
       setGroups([]);
+      setTodayLessonsCount(0);
+      setSubmissionsToReviewCount(0);
       setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
@@ -220,7 +296,47 @@ export default function TeacherDashboard() {
       new Map<number, UniqueStudentItem>();
 
     groups.forEach((groupItem) => {
+      const acceptedHomeworkIdsByStudent =
+        new Map<number, Set<number>>();
+
+      groupItem.submissions.forEach((submission) => {
+        if (submission.status !== 'accepted') {
+          return;
+        }
+
+        const studentHomeworkIds =
+          acceptedHomeworkIdsByStudent.get(
+            submission.student_id
+          ) ?? new Set<number>();
+
+        studentHomeworkIds.add(
+          submission.homework_id
+        );
+
+        acceptedHomeworkIdsByStudent.set(
+          submission.student_id,
+          studentHomeworkIds
+        );
+      });
+
+      const groupHomeworkIds = new Set(
+        groupItem.homeworks.map(
+          (homework) => homework.id
+        )
+      );
+
       groupItem.students.forEach((student) => {
+        const acceptedCount = Array.from(
+          acceptedHomeworkIdsByStudent.get(
+            student.user_id
+          ) ?? []
+        ).filter((homeworkId) =>
+          groupHomeworkIds.has(homeworkId)
+        ).length;
+
+        const assignedCount =
+          groupItem.homeworks.length;
+
         const existing =
           studentsMap.get(student.user_id);
 
@@ -238,6 +354,12 @@ export default function TeacherDashboard() {
             );
           }
 
+          existing.assignedCount += assignedCount;
+          existing.acceptedCount += acceptedCount;
+          existing.outstandingCount =
+            existing.assignedCount -
+            existing.acceptedCount;
+
           return;
         }
 
@@ -245,6 +367,10 @@ export default function TeacherDashboard() {
           student,
           groupIds: [groupItem.group.id],
           groupNames: [groupItem.group.name],
+          assignedCount,
+          acceptedCount,
+          outstandingCount:
+            assignedCount - acceptedCount,
         });
       });
     });
@@ -259,6 +385,26 @@ export default function TeacherDashboard() {
         )
     );
   }, [groups]);
+
+  const studentsWithHomeworkDebt = useMemo(
+    () =>
+      uniqueStudents
+        .filter(
+          (studentItem) =>
+            studentItem.outstandingCount > 0
+        )
+        .sort((first, second) =>
+          second.outstandingCount -
+            first.outstandingCount ||
+          getStudentName(first.student)
+            .localeCompare(
+              getStudentName(second.student),
+              'ru'
+            )
+        ),
+    [uniqueStudents]
+  );
+
 
   if (loading) {
     return (
@@ -276,25 +422,14 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Кабинет преподавателя
-          </h1>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Кабинет преподавателя
+        </h1>
 
-          <p className="mt-1 text-gray-500">
-            Обзор ваших групп и студентов
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void loadDashboard()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Обновить
-        </button>
+        <p className="mt-1 text-gray-500">
+          Обзор ваших групп и студентов
+        </p>
       </div>
 
       {error && (
@@ -330,15 +465,15 @@ export default function TeacherDashboard() {
 
         <StatCard
           label="Заданий на проверке"
-          value="12"
+          value={String(submissionsToReviewCount)}
           icon={ClipboardList}
           color="amber"
         />
 
         <StatCard
-          label="Средняя успеваемость"
-          value="—"
-          icon={CheckCircle2}
+          label="Сегодня занятий"
+          value={String(todayLessonsCount)}
+          icon={CalendarDays}
           color="green"
         />
       </div>
@@ -484,11 +619,11 @@ export default function TeacherDashboard() {
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-gray-900">
-              Студенты
+              Студенты с невыполненными заданиями
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Уникальные студенты из всех ваших групп
+              Студенты, которым требуется сдать домашнюю работу
             </p>
           </div>
 
@@ -501,16 +636,16 @@ export default function TeacherDashboard() {
           </Link>
         </div>
 
-        {uniqueStudents.length === 0 ? (
+        {studentsWithHomeworkDebt.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-10 text-center">
             <UserRound className="mx-auto h-9 w-9 text-gray-300" />
 
             <p className="mt-3 font-medium text-gray-700">
-              Студенты не найдены
+              Долгов по заданиям нет
             </p>
 
             <p className="mt-1 text-sm text-gray-500">
-              Добавьте студентов в группы преподавателя.
+              Все назначенные домашние задания приняты.
             </p>
           </div>
         ) : (
@@ -527,7 +662,7 @@ export default function TeacherDashboard() {
                   </th>
 
                   <th className="pb-3 font-medium">
-                    ID
+                    Домашние задания
                   </th>
 
                   <th className="pb-3 text-right font-medium">
@@ -537,7 +672,7 @@ export default function TeacherDashboard() {
               </thead>
 
               <tbody className="divide-y divide-gray-50">
-                {uniqueStudents
+                {studentsWithHomeworkDebt
                   .slice(0, 8)
                   .map((studentItem) => (
                     <tr
@@ -575,22 +710,49 @@ export default function TeacherDashboard() {
                         {studentItem.groupNames.join(', ')}
                       </td>
 
-                      <td className="py-3 text-gray-500">
-                        {studentItem.student.user_id}
+                      <td className="py-3">
+                        <div
+                          className="flex items-center gap-1.5 font-semibold"
+                          title="Принято / осталось сдать"
+                        >
+                          <span className="text-green-600">
+                            {studentItem.acceptedCount}
+                          </span>
+                          <span className="text-gray-300">
+                            /
+                          </span>
+                          <span className="text-red-600">
+                            {studentItem.outstandingCount}
+                          </span>
+                        </div>
                       </td>
 
                       <td className="py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(
-                              `/dashboard/attendance?groupId=${studentItem.groupIds[0]}`
-                            )
-                          }
-                          className="text-xs font-semibold text-red-600 hover:text-red-700"
-                        >
-                          Открыть журнал
-                        </button>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate(
+                                `/dashboard/students/${studentItem.student.user_id}`
+                              )
+                            }
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                          >
+                            Открыть профиль
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate(
+                                `/dashboard/attendance?groupId=${studentItem.groupIds[0]}&studentId=${studentItem.student.user_id}`
+                              )
+                            }
+                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                          >
+                            Открыть журнал
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -600,42 +762,7 @@ export default function TeacherDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          {
-            icon: ClipboardList,
-            label: 'Задания',
-            to: '/dashboard/homework',
-          },
-          {
-            icon: FileText,
-            label: 'Материалы',
-            to: '/dashboard/materials',
-          },
-          {
-            icon: MessageSquare,
-            label: 'Сообщения',
-            to: '/dashboard/messages',
-          },
-          {
-            icon: CheckCircle2,
-            label: 'Посещаемость',
-            to: '/dashboard/attendance',
-          },
-        ].map((action) => (
-          <Link
-            key={action.to}
-            to={action.to}
-            className="card group flex flex-col items-center gap-2 p-5 transition-all hover:border-red-200 hover:bg-red-50"
-          >
-            <action.icon className="h-6 w-6 text-gray-400 transition-colors group-hover:text-red-600" />
 
-            <span className="text-center text-xs font-medium text-gray-700">
-              {action.label}
-            </span>
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }

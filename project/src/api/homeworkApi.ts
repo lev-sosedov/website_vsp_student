@@ -11,6 +11,7 @@ export type HomeworkSubmissionStatus =
 export interface Homework {
   id: number;
   lesson_id: number;
+  group_id: number | null;
 
   title: string;
   description: string;
@@ -197,6 +198,29 @@ export async function getPublishedHomeworks(): Promise<
   return response.items;
 }
 
+
+export async function getGroupHomeworks(
+  groupId: number
+): Promise<Homework[]> {
+  validateId(groupId, 'ID группы');
+
+  const query = new URLSearchParams({
+    group_id: String(groupId),
+    is_published: 'true',
+    is_active: 'true',
+    skip: '0',
+    limit: '500',
+  });
+
+  const response =
+    await request<HomeworkListResponse>(
+      `/api/v1/homeworks?${query.toString()}`
+    );
+
+  return response.items;
+}
+
+
 export async function getHomework(
   homeworkId: number
 ): Promise<Homework> {
@@ -344,6 +368,7 @@ export async function submitHomeworkSubmission(
 export interface GetHomeworkSubmissionsParams {
   homeworkId?: number;
   studentId?: number;
+  groupId?: number;
   status?: HomeworkSubmissionStatus;
   isLate?: boolean;
   checkedBy?: number;
@@ -398,6 +423,18 @@ export async function getHomeworkSubmissions(
     query.set(
       'student_id',
       String(params.studentId)
+    );
+  }
+
+  if (params.groupId !== undefined) {
+    validateId(
+      params.groupId,
+      'ID группы'
+    );
+
+    query.set(
+      'group_id',
+      String(params.groupId)
     );
   }
 

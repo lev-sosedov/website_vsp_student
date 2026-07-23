@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   BookOpen,
   Calendar,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   DoorOpen,
   Loader2,
@@ -302,6 +304,31 @@ export default function Schedule() {
 
   const [error, setError] =
     useState<string | null>(null);
+
+  const dayScrollRefs =
+    useRef<Map<string, HTMLDivElement>>(
+      new Map()
+    );
+
+  const scrollDayLessons = (
+    dateString: string,
+    direction: 'up' | 'down'
+  ) => {
+    const container =
+      dayScrollRefs.current.get(dateString);
+
+    if (!container) {
+      return;
+    }
+
+    container.scrollBy({
+      top:
+        direction === 'down'
+          ? container.clientHeight * 0.75
+          : -container.clientHeight * 0.75,
+      behavior: 'smooth',
+    });
+  };
 
   const selectedWeekEnd = useMemo(
     () => addDays(selectedWeekStart, 6),
@@ -844,14 +871,14 @@ export default function Schedule() {
           {weekDays.map((day) => (
             <section
               key={day.dateString}
-              className={`card overflow-hidden ${
+              className={`card flex h-[520px] min-h-0 flex-col overflow-hidden ${
                 day.isToday
                   ? 'ring-2 ring-red-500 ring-offset-2'
                   : ''
               }`}
             >
               <div
-                className={`flex items-center justify-between border-b px-5 py-4 ${
+                className={`flex shrink-0 items-center justify-between border-b px-5 py-4 ${
                   day.isToday
                     ? 'border-red-100 bg-red-50'
                     : 'border-gray-100 bg-white'
@@ -892,9 +919,9 @@ export default function Schedule() {
                 </span>
               </div>
 
-              <div className="p-4">
+              <div className="relative min-h-0 flex-1">
                 {day.lessons.length === 0 ? (
-                  <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+                  <div className="m-4 flex h-[calc(100%-2rem)] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
                     <BookOpen className="h-7 w-7 text-gray-300" />
 
                     <p className="mt-2 text-sm font-medium text-gray-500">
@@ -906,8 +933,23 @@ export default function Schedule() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {day.lessons.map((lesson) => {
+                  <>
+                    <div
+                      ref={(element) => {
+                        if (element) {
+                          dayScrollRefs.current.set(
+                            day.dateString,
+                            element
+                          );
+                        } else {
+                          dayScrollRefs.current.delete(
+                            day.dateString
+                          );
+                        }
+                      }}
+                      className="h-full space-y-3 overflow-y-auto overscroll-contain p-4 pr-3 [scrollbar-gutter:stable]"
+                    >
+                      {day.lessons.map((lesson) => {
                       const statusLabel =
                         getStatusLabel(
                           lesson.status
@@ -1013,8 +1055,43 @@ export default function Schedule() {
                           )}
                         </article>
                       );
-                    })}
-                  </div>
+                      })}
+                    </div>
+
+                    {day.lessons.length > 1 && (
+                      <div className="pointer-events-none absolute bottom-3 right-5 flex gap-1 rounded-xl border border-gray-200 bg-white/95 p-1 shadow-lg backdrop-blur">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            scrollDayLessons(
+                              day.dateString,
+                              'up'
+                            )
+                          }
+                          className="pointer-events-auto rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                          title="Прокрутить занятия вверх"
+                          aria-label="Прокрутить занятия вверх"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            scrollDayLessons(
+                              day.dateString,
+                              'down'
+                            )
+                          }
+                          className="pointer-events-auto rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                          title="Прокрутить занятия вниз"
+                          aria-label="Прокрутить занятия вниз"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </section>
