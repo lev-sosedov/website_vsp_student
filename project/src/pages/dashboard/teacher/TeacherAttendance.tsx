@@ -18,6 +18,10 @@ import {
   Users,
 } from 'lucide-react';
 
+import {
+  useSearchParams,
+} from 'react-router-dom';
+
 import { useAuth } from '../../../context/AuthContext';
 
 import {
@@ -190,7 +194,22 @@ StudentAttendanceState {
 export default function TeacherAttendance() {
   const { user } = useAuth();
 
+  const [
+    searchParams,
+    setSearchParams,
+  ] = useSearchParams();
+
   const teacherId = Number(user?.id);
+
+  const groupIdFromUrl = useMemo(() => {
+    const value = Number(
+      searchParams.get('groupId')
+    );
+
+    return Number.isInteger(value) && value > 0
+      ? value
+      : null;
+  }, [searchParams]);
 
   const [
     groups,
@@ -359,9 +378,42 @@ export default function TeacherAttendance() {
         setGroups(groupResults);
 
         if (groupResults.length > 0) {
-          setSelectedGroupId(
-            groupResults[0].group.id
-          );
+          const requestedGroup =
+            groupIdFromUrl
+              ? groupResults.find(
+                  (item) =>
+                    item.group.id ===
+                    groupIdFromUrl
+                )
+              : null;
+
+          const nextGroupId =
+            requestedGroup?.group.id ??
+            groupResults[0].group.id;
+
+          setSelectedGroupId(nextGroupId);
+
+          if (groupIdFromUrl !== nextGroupId) {
+            setSearchParams(
+              {
+                groupId: String(nextGroupId),
+              },
+              {
+                replace: true,
+              }
+            );
+          }
+        } else {
+          setSelectedGroupId(null);
+
+          if (searchParams.has('groupId')) {
+            setSearchParams(
+              {},
+              {
+                replace: true,
+              }
+            );
+          }
         }
       } catch (loadError) {
         setError(
@@ -372,7 +424,12 @@ export default function TeacherAttendance() {
       } finally {
         setLoadingGroups(false);
       }
-    }, [teacherId]);
+    }, [
+      teacherId,
+      groupIdFromUrl,
+      searchParams,
+      setSearchParams,
+    ]);
 
   useEffect(() => {
     void loadTeacherGroups();
@@ -819,12 +876,37 @@ export default function TeacherAttendance() {
                   event.target.value
                 );
 
-                setSelectedGroupId(
+                const nextGroupId =
                   Number.isInteger(value) &&
-                    value > 0
+                  value > 0
                     ? value
-                    : null
-                );
+                    : null;
+
+                setSelectedGroupId(nextGroupId);
+                setSelectedLessonId(null);
+                setLessons([]);
+                setStudents([]);
+                setAttendanceState({});
+                setSuccessMessage(null);
+
+                if (nextGroupId) {
+                  setSearchParams(
+                    {
+                      groupId:
+                        String(nextGroupId),
+                    },
+                    {
+                      replace: true,
+                    }
+                  );
+                } else {
+                  setSearchParams(
+                    {},
+                    {
+                      replace: true,
+                    }
+                  );
+                }
               }}
               disabled={
                 groups.length === 0 ||

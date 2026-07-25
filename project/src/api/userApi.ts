@@ -11,12 +11,23 @@ export interface UserProfile {
   last_name: string | null;
   birthday: string | null;
   avatar_url: string | null;
+  about: string | null;
   role: string;
   is_active: boolean;
   is_account_verified: boolean;
   is_phone_verified: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface UserProfileUpdate {
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  birthday?: string | null;
+  avatar_url?: string | null;
+  about?: string | null;
+  user_name?: string | null;
 }
 
 const userProfileCache =
@@ -178,4 +189,66 @@ export function clearUserProfileCache(
 
   userProfileCache.clear();
   pendingUserRequests.clear();
+}
+
+export async function updateUserProfile(
+  userId: number,
+  data: UserProfileUpdate
+): Promise<UserProfile> {
+  const accessToken = getAccessToken();
+
+  const response = await fetch(
+    `${API_URL}/api/v1/users/${userId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(accessToken
+          ? {
+              Authorization:
+                `Bearer ${accessToken}`,
+            }
+          : {}),
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    let message =
+      `Не удалось обновить профиль: ${response.status}`;
+
+    try {
+      const responseData = (await response.json()) as {
+        detail?: string;
+        message?: string;
+      };
+
+      message =
+        responseData.detail ??
+        responseData.message ??
+        message;
+    } catch {
+      const responseText = await response.text();
+
+      if (responseText) {
+        message = responseText;
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  const updatedUser =
+    (await response.json()) as UserProfile;
+
+  /*
+   * Обновляем кеш, чтобы refreshProfile()
+   * не вернул старую аватарку.
+   */
+  userProfileCache.set(userId, updatedUser);
+  pendingUserRequests.delete(userId);
+
+  return updatedUser;
 }

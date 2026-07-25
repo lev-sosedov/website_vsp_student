@@ -28,8 +28,10 @@ import { useAuth } from '../../../context/AuthContext';
 
 import {
   getActiveUserGroups,
+  getDirection,
   getGroup,
   getGroupStudents,
+  type AcademicDirection,
   type AcademicGroup,
   type GroupStudent,
 } from '../../../api/academicApi';
@@ -55,6 +57,7 @@ interface TeacherDashboardGroup {
   students: GroupStudent[];
   homeworks: Homework[];
   submissions: HomeworkSubmission[];
+  direction: AcademicDirection | null;
 }
 
 interface UniqueStudentItem {
@@ -190,41 +193,64 @@ export default function TeacherDashboard() {
       );
 
       const loadedGroups = await Promise.all(
-        uniqueMemberships.map(
-          async (membership) => {
-            const [
-              group,
-              studentsResponse,
-              homeworks,
-              submissionsResponse,
-            ] = await Promise.all([
-              getGroup(membership.group_id),
-              getGroupStudents(
-                membership.group_id
-              ),
-              getGroupHomeworks(
-                membership.group_id
-              ),
-              getHomeworkSubmissions({
-                groupId: membership.group_id,
-                skip: 0,
-                limit: 500,
-              }),
-            ]);
+        uniqueMemberships.map(async (membership) => {
+          const group = await getGroup(
+            membership.group_id
+          );
 
-            return {
-              membershipId: membership.id,
-              group,
-              students:
-                studentsResponse.items.filter(
-                  (student) =>
-                    student.is_active
-                ),
-              homeworks,
-              submissions: submissionsResponse.items,
-            };
-          }
-        )
+          const [
+            studentsResponse,
+            direction,
+            homeworks,
+          ] = await Promise.all([
+            getGroupStudents(membership.group_id),
+
+            group.direction_id
+              ? getDirection(group.direction_id)
+                  .catch((directionError) => {
+                    console.error(
+                      `Не удалось загрузить направление группы ${group.id}:`,
+                      directionError
+                    );
+
+                    return null;
+                  })
+              : Promise.resolve(null),
+
+            getGroupHomeworks(group.id),
+          ]);
+
+          const submissions = (
+            await Promise.all(
+              homeworks.map((homework) =>
+                getHomeworkSubmissions({
+                  homeworkId: homework.id,
+                  limit: 100,
+                })
+                  .then(
+                    (response) => response.items
+                  )
+                  .catch((submissionError) => {
+                    console.error(
+                      `Не удалось загрузить отправки домашнего задания ${homework.id}:`,
+                      submissionError
+                    );
+
+                    return [];
+                  })
+              )
+            )
+          ).flat();
+
+          return {
+            membershipId: membership.id,
+            group,
+            students: studentsResponse.items,
+            homeworks,
+            submissions,
+            direction,
+          };
+        })
       );
 
       loadedGroups.sort((first, second) =>
@@ -508,7 +534,7 @@ export default function TeacherDashboard() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
               {groups.map((groupItem) => (
                 <div
                   key={groupItem.group.id}
@@ -524,13 +550,9 @@ export default function TeacherDashboard() {
                         {groupItem.group.name}
                       </p>
 
-                      <p className="mt-1 text-xs text-gray-500">
-                        Филиал:{' '}
-                        {groupItem.group.branch_id ??
-                          'не указан'}
-                        {' · '}
-                        Студентов:{' '}
-                        {groupItem.students.length}
+                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                        {groupItem.direction?.name ??
+                          'Направление не указано'}
                       </p>
                     </div>
 

@@ -1,6 +1,6 @@
 import {
   getGroup,
-  getPrimaryStudentGroupMembership,
+  getStudentGroupMemberships,
   type AcademicGroup,
 } from '../api/academicApi';
 
@@ -15,6 +15,11 @@ import {
   getUserById,
   type UserProfile,
 } from '../api/userApi';
+
+export interface StudentDashboardGroup {
+  id: number;
+  name: string;
+}
 
 export interface StudentDashboardLesson {
   id: number;
@@ -44,8 +49,7 @@ export interface StudentDashboardLesson {
 }
 
 export interface StudentDashboardData {
-  groupId: number;
-  groupName: string;
+  groups: StudentDashboardGroup[];
   todayLessons: StudentDashboardLesson[];
 }
 
@@ -81,7 +85,9 @@ function getGroupName(group: AcademicGroup): string {
   return `Группа №${group.id}`;
 }
 
-function getLessonTitle(lesson: LessonSchedule): string {
+function getLessonTitle(
+  lesson: LessonSchedule
+): string {
   if (lesson.topic?.trim()) {
     return lesson.topic.trim();
   }
@@ -93,7 +99,9 @@ function getLessonTitle(lesson: LessonSchedule): string {
   return 'Занятие';
 }
 
-function getLessonTypeLabel(lesson: LessonSchedule): string {
+function getLessonTypeLabel(
+  lesson: LessonSchedule
+): string {
   if (lesson.is_extra) {
     return 'Дополнительное';
   }
@@ -131,12 +139,6 @@ function getRoomName(
   return 'Кабинет не указан';
 }
 
-/**
- * Безопасное получение преподавателя.
- *
- * Ошибка одного пользователя не должна полностью ломать
- * загрузку всего главного экрана.
- */
 async function loadTeacherSafely(
   teacherId: number
 ): Promise<UserProfile | null> {
@@ -152,12 +154,6 @@ async function loadTeacherSafely(
   }
 }
 
-/**
- * Безопасное получение кабинета.
- *
- * Если кабинет удалён, выключен или временно недоступен,
- * остальные занятия всё равно будут показаны.
- */
 async function loadRoomSafely(
   roomId: number
 ): Promise<Room | null> {
@@ -174,34 +170,57 @@ async function loadRoomSafely(
 }
 
 /**
- * Загружает данные главной страницы студента.
+ * Загружает данные главной страницы студента:
+ * все его активные учебные группы и сегодняшние занятия.
  */
 export async function loadStudentDashboard(
   userId: number
 ): Promise<StudentDashboardData> {
-  const membership =
-    await getPrimaryStudentGroupMembership(userId);
+  const memberships =
+    await getStudentGroupMemberships(userId);
 
-  if (!membership) {
+  if (memberships.length === 0) {
     throw new Error(
       'Вы пока не добавлены ни в одну учебную группу.'
     );
   }
 
-  const groupId = membership.group_id;
+  const groupIds = Array.from(
+    new Set(
+      memberships.map(
+        (membership) => membership.group_id
+      )
+    )
+  );
 
-  const [group, lessons] = await Promise.all([
-    getGroup(groupId),
-    getTodayLessons(groupId),
-  ]);
+  const loadedGroups = await Promise.all(
+    groupIds.map((groupId) => getGroup(groupId))
+  );
 
-  /*
-   * Один преподаватель или кабинет может встречаться
-   * сразу в нескольких занятиях.
-   *
-   * Поэтому сначала собираем только уникальные ID,
-   * чтобы не отправлять повторные запросы.
-   */
+  const groups: StudentDashboardGroup[] =
+    loadedGroups
+      .map((group) => ({
+        id: group.id,
+        name: getGroupName(group),
+      }))
+      .sort((firstGroup, secondGroup) =>
+        firstGroup.name.localeCompare(
+          secondGroup.name,
+          'ru'
+        )
+      );
+
+  const lessonsByGroup = await Promise.all(
+    groups.map(async (group) => ({
+      group,
+      lessons: await getTodayLessons(group.id),
+    }))
+  );
+
+  const lessons = lessonsByGroup.flatMap(
+    ({ lessons: groupLessons }) => groupLessons
+  );
+
   const teacherIds = Array.from(
     new Set(
       lessons.map((lesson) => lesson.teacher_id)
@@ -224,10 +243,7 @@ export async function loadStudentDashboard(
       const teacher =
         await loadTeacherSafely(teacherId);
 
-      return [
-        teacherId,
-        teacher,
-      ] as const;
+      return [teacherId, teacher] as const;
     })
   );
 
@@ -235,10 +251,7 @@ export async function loadStudentDashboard(
     roomIds.map(async (roomId) => {
       const room = await loadRoomSafely(roomId);
 
-      return [
-        roomId,
-        room,
-      ] as const;
+      return [roomId, room] as const;
     })
   );
 
@@ -249,6 +262,13 @@ export async function loadStudentDashboard(
 
   const roomsById = new Map<number, Room | null>(
     roomEntries
+  );
+
+  const groupNamesById = new Map<number, string>(
+    groups.map((group) => [
+      group.id,
+      group.name,
+    ])
   );
 
   const dashboardLessons: StudentDashboardLesson[] =
@@ -265,7 +285,9 @@ export async function loadStudentDashboard(
         id: lesson.id,
 
         groupId: lesson.group_id,
-        groupName: getGroupName(group),
+        groupName:
+          groupNamesById.get(lesson.group_id) ??
+          `Группа №${lesson.group_id}`,
 
         title: getLessonTitle(lesson),
         description: lesson.description,
@@ -297,9 +319,25 @@ export async function loadStudentDashboard(
       };
     });
 
+  dashboardLessons.sort(
+    (firstLesson, secondLesson) => {
+      const dateComparison =
+        firstLesson.lessonDate.localeCompare(
+          secondLesson.lessonDate
+        );
+
+      if (dateComparison !== 0) {
+        return dateComparison;
+      }
+
+      return firstLesson.startTime.localeCompare(
+        secondLesson.startTime
+      );
+    }
+  );
+
   return {
-    groupId,
-    groupName: getGroupName(group),
+    groups,
     todayLessons: dashboardLessons,
   };
 }

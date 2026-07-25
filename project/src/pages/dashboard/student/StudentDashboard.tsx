@@ -22,6 +22,7 @@ import { useAuth } from '../../../context/AuthContext';
 
 import {
   loadStudentDashboard,
+  type StudentDashboardGroup,
   type StudentDashboardLesson,
 } from '../../../services/dashboardService';
 
@@ -35,10 +36,16 @@ import {
 
 function getGreetingName(
   firstName: string | null | undefined,
+  lastName: string | null | undefined,
   userName: string | null | undefined
 ): string {
-  if (firstName?.trim()) {
-    return firstName.trim();
+  const fullName = [firstName, lastName]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(' ');
+
+  if (fullName) {
+    return fullName;
   }
 
   if (userName?.trim()) {
@@ -65,9 +72,12 @@ export default function StudentDashboard() {
     StudentDashboardLesson[]
   >([]);
 
-  const [groupName, setGroupName] = useState<string | null>(
-    null
-  );
+  const [groups, setGroups] = useState<
+    StudentDashboardGroup[]
+  >([]);
+
+  const [selectedGroupId, setSelectedGroupId] =
+    useState<string>('all');
 
   const [lessonsLoading, setLessonsLoading] =
     useState(true);
@@ -83,7 +93,8 @@ export default function StudentDashboard() {
       if (!user?.id) {
         if (isMounted) {
           setTodayLessons([]);
-          setGroupName(null);
+          setGroups([]);
+          setSelectedGroupId('all');
           setLessonsLoading(false);
         }
 
@@ -104,9 +115,11 @@ export default function StudentDashboard() {
             dashboardData.todayLessons
           );
 
-          setGroupName(
-            dashboardData.groupName
+          setGroups(
+            dashboardData.groups
           );
+
+          setSelectedGroupId('all');
         }
       } catch (error) {
         console.error(
@@ -116,7 +129,8 @@ export default function StudentDashboard() {
 
         if (isMounted) {
           setTodayLessons([]);
-          setGroupName(null);
+          setGroups([]);
+          setSelectedGroupId('all');
 
           setLessonsError(
             error instanceof Error
@@ -147,8 +161,27 @@ export default function StudentDashboard() {
 
   const greetingName = getGreetingName(
     user?.first_name,
+    user?.last_name,
     user?.user_name
   );
+
+  const visibleLessons =
+    selectedGroupId === 'all'
+      ? todayLessons
+      : todayLessons.filter(
+          (lesson) =>
+            lesson.groupId.toString() ===
+            selectedGroupId
+        );
+
+  const selectedGroup =
+    selectedGroupId === 'all'
+      ? null
+      : groups.find(
+          (group) =>
+            group.id.toString() ===
+            selectedGroupId
+        ) ?? null;
 
   return (
     <div className="space-y-6">
@@ -161,11 +194,7 @@ export default function StudentDashboard() {
           Вот что у вас сегодня на повестке.
         </p>
 
-        {groupName && (
-          <p className="mt-1 text-sm text-gray-400">
-            Учебная группа: {groupName}
-          </p>
-        )}
+
       </div>
 
       {/* Пока данные карточек тестовые */}
@@ -200,7 +229,98 @@ export default function StudentDashboard() {
           color="purple"
         />
       </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Пока тестовые события */}
+          <div className="card p-6 lg:col-span-2">
+            <h2 className="mb-5 text-lg font-bold text-gray-900">
+              Мои группы
+            </h2>
 
+            <Link
+              to="/dashboard/schedule"
+              className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700"
+            >
+              Все группы
+
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+
+            <div className="space-y-4">
+              {upcomingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex gap-3"
+                >
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gray-50">
+                    <Calendar className="h-5 w-5 text-gray-400" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {event.title}
+                    </p>
+
+                    <p className="text-xs text-gray-500">
+                      {event.date}
+                      {' · '}
+                      {event.time}
+                    </p>
+
+                    <p className="text-xs text-gray-400">
+                      {event.location}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        
+          {/* Пока тестовые уведомления */}
+          <div className="card p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">
+                Уведомления
+              </h2>
+
+              <Link
+                to="/dashboard/notifications"
+                className="text-sm text-red-600 hover:text-red-700"
+              >
+                Все
+              </Link>
+            </div>
+
+            <div className="space-y-3">
+              {notifications
+                .slice(0, 4)
+                .map((notification) => (
+                  <div
+                    key={notification.id}
+                    className="flex gap-3"
+                  >
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-50">
+                      <Bell className="h-4 w-4 text-red-600" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {notification.title}
+                      </p>
+
+                      <p className="line-clamp-1 text-xs text-gray-500">
+                        {notification.text}
+                      </p>
+
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {notification.time}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Сегодняшние занятия — реальные данные */}
         <div className="card p-6 lg:col-span-2">
@@ -210,10 +330,45 @@ export default function StudentDashboard() {
                 Сегодняшние занятия
               </h2>
 
-              {groupName && (
+              {groups.length === 1 && (
                 <p className="mt-0.5 text-xs text-gray-400">
-                  {groupName}
+                  {groups[0].name}
                 </p>
+              )}
+
+              {groups.length > 1 && (
+                <div className="mt-2">
+                  <label
+                    htmlFor="dashboard-group"
+                    className="sr-only"
+                  >
+                    Выберите учебную группу
+                  </label>
+
+                  <select
+                    id="dashboard-group"
+                    value={selectedGroupId}
+                    onChange={(event) =>
+                      setSelectedGroupId(
+                        event.target.value
+                      )
+                    }
+                    className="min-w-48 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  >
+                    <option value="all">
+                      Все группы
+                    </option>
+
+                    {groups.map((group) => (
+                      <option
+                        key={group.id}
+                        value={group.id.toString()}
+                      >
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
 
@@ -249,7 +404,7 @@ export default function StudentDashboard() {
 
             {!lessonsLoading &&
               !lessonsError &&
-              todayLessons.length === 0 && (
+              visibleLessons.length === 0 && (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-6 text-center">
                   <Calendar className="mx-auto mb-2 h-8 w-8 text-gray-300" />
 
@@ -258,15 +413,16 @@ export default function StudentDashboard() {
                   </p>
 
                   <p className="mt-1 text-xs text-gray-400">
-                    Можно повторить пройденный материал
-                    или отдохнуть.
+                    {selectedGroup
+                      ? `В группе «${selectedGroup.name}» сегодня нет занятий.`
+                      : 'Во всех ваших группах сегодня нет занятий.'}
                   </p>
                 </div>
               )}
 
             {!lessonsLoading &&
               !lessonsError &&
-              todayLessons.map(
+              visibleLessons.map(
                 (lesson) => (
                   <div
                     key={lesson.id}
@@ -292,6 +448,13 @@ export default function StudentDashboard() {
                         {lesson.title}
                       </p>
 
+                      {selectedGroupId === 'all' &&
+                        groups.length > 1 && (
+                          <p className="mt-0.5 text-xs font-medium text-red-500">
+                            {lesson.groupName}
+                          </p>
+                        )}
+
                       <p className="text-xs text-gray-500">
                         {lesson.teacherName}
                         {' · '}
@@ -314,55 +477,8 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* Пока тестовые уведомления */}
-        <div className="card p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">
-              Уведомления
-            </h2>
-
-            <Link
-              to="/dashboard/notifications"
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              Все
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {notifications
-              .slice(0, 4)
-              .map((notification) => (
-                <div
-                  key={notification.id}
-                  className="flex gap-3"
-                >
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-50">
-                    <Bell className="h-4 w-4 text-red-600" />
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {notification.title}
-                    </p>
-
-                    <p className="line-clamp-1 text-xs text-gray-500">
-                      {notification.text}
-                    </p>
-
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      {notification.time}
-                    </p>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Пока тестовые задания */}
-        <div className="card p-6 lg:col-span-2">
+        <div className="card p-6 ">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-900">
               Ближайшие задания
@@ -430,157 +546,6 @@ export default function StudentDashboard() {
                 </div>
               ))}
           </div>
-        </div>
-
-        {/* Пока тестовые события */}
-        <div className="card p-6">
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
-            Ближайшие события
-          </h2>
-
-          <div className="space-y-4">
-            {upcomingEvents.map((event) => (
-              <div
-                key={event.id}
-                className="flex gap-3"
-              >
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gray-50">
-                  <Calendar className="h-5 w-5 text-gray-400" />
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {event.title}
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    {event.date}
-                    {' · '}
-                    {event.time}
-                  </p>
-
-                  <p className="text-xs text-gray-400">
-                    {event.location}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Пока тестовый прогресс */}
-        <div className="card p-6">
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
-            Прогресс по курсам
-          </h2>
-
-          <div className="space-y-4">
-            {progressData.map(
-              (progressItem) => (
-                <ProgressBar
-                  key={
-                    progressItem.subject
-                  }
-                  label={
-                    progressItem.subject
-                  }
-                  value={
-                    progressItem.value
-                  }
-                />
-              )
-            )}
-          </div>
-        </div>
-
-        {/* Пока тестовая активность */}
-        <div className="card p-6">
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
-            Активность за неделю
-          </h2>
-
-          <div className="flex h-40 items-end justify-between gap-2">
-            {weeklyActivity.map(
-              (activityItem) => (
-                <div
-                  key={
-                    activityItem.day
-                  }
-                  className="flex flex-1 flex-col items-center gap-2"
-                >
-                  <div
-                    className="flex w-full items-end overflow-hidden rounded-lg bg-gray-100"
-                    style={{
-                      height: '120px',
-                    }}
-                  >
-                    <div
-                      className="w-full rounded-lg bg-red-500 transition-all duration-500 hover:bg-red-600"
-                      style={{
-                        height: `${
-                          (activityItem.value /
-                            maxActivity) *
-                          100
-                        }%`,
-                      }}
-                    />
-                  </div>
-
-                  <span className="text-xs text-gray-400">
-                    {
-                      activityItem.day
-                    }
-                  </span>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="card p-6">
-        <h2 className="mb-5 text-lg font-bold text-gray-900">
-          Быстрые действия
-        </h2>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            {
-              icon: BookOpen,
-              label:
-                'Домашние задания',
-              to: '/dashboard/homework',
-            },
-            {
-              icon: FileText,
-              label: 'Материалы',
-              to: '/dashboard/materials',
-            },
-            {
-              icon: MessageSquare,
-              label: 'Сообщения',
-              to: '/dashboard/messages',
-            },
-            {
-              icon: GraduationCap,
-              label: 'Успеваемость',
-              to: '/dashboard/progress',
-            },
-          ].map((action) => (
-            <Link
-              key={action.to}
-              to={action.to}
-              className="group flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-4 transition-all hover:border-red-200 hover:bg-red-50"
-            >
-              <action.icon className="h-6 w-6 text-gray-400 transition-colors group-hover:text-red-600" />
-
-              <span className="text-center text-xs font-medium text-gray-700">
-                {action.label}
-              </span>
-            </Link>
-          ))}
         </div>
       </div>
     </div>

@@ -3,10 +3,12 @@ import {
   useMemo,
   useState,
 } from 'react';
+
 import {
   NavLink,
   useNavigate,
 } from 'react-router-dom';
+
 import {
   GraduationCap,
   LogOut,
@@ -17,6 +19,7 @@ import {
 import {
   getUserUnreadCount,
 } from '../../api/chatApi';
+
 import { useAuth } from '../../context/AuthContext';
 
 export interface NavItem {
@@ -34,22 +37,76 @@ interface DashboardLayoutProps {
 }
 
 function getDisplayName(
+  role: string | null | undefined,
   firstName: string | null | undefined,
   lastName: string | null | undefined,
   userName: string | null | undefined,
   phoneNumber: string | null | undefined
 ): string {
-  const fullName = [firstName, lastName]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  const normalizedRole =
+    role?.trim().toLowerCase();
 
-  if (fullName) {
-    return fullName;
+  let displayName = '';
+
+  /*
+   * Преподаватель, родитель и администратор:
+   * user_name — имя;
+   * last_name — отчество.
+   *
+   * Например: Антон Викторович.
+   */
+  if (
+    normalizedRole === 'teacher' ||
+    normalizedRole === 'parent' ||
+    normalizedRole === 'admin'
+  ) {
+    displayName = [
+      userName,
+      lastName,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
   }
 
-  if (userName?.trim()) {
-    return userName.trim();
+  /*
+   * Студент:
+   * first_name — фамилия;
+   * user_name — имя.
+   *
+   * Например: Соседов Лев.
+   */
+  if (
+    normalizedRole === 'student' ||
+    normalizedRole === 'user'
+  ) {
+    displayName = [
+      firstName,
+      userName,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  /*
+   * Запасной вариант для неизвестной роли.
+   */
+  if (!displayName) {
+    displayName = [
+      userName,
+      lastName,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  if (displayName) {
+    return displayName;
   }
 
   if (phoneNumber?.trim()) {
@@ -60,41 +117,24 @@ function getDisplayName(
 }
 
 function getInitials(
-  firstName: string | null | undefined,
-  lastName: string | null | undefined,
-  userName: string | null | undefined
+  displayName: string
 ): string {
-  const firstInitial =
-    firstName?.trim().charAt(0) ?? '';
-
-  const lastInitial =
-    lastName?.trim().charAt(0) ?? '';
-
-  const fullNameInitials =
-    `${firstInitial}${lastInitial}`.toUpperCase();
-
-  if (fullNameInitials) {
-    return fullNameInitials;
-  }
-
-  const normalizedUserName =
-    userName?.trim() ?? '';
-
-  if (!normalizedUserName) {
-    return 'П';
-  }
-
-  const words = normalizedUserName
+  const words = displayName
+    .trim()
     .split(/\s+/)
     .filter(Boolean);
 
-  if (words.length >= 2) {
-    return `${words[0].charAt(0)}${words[1].charAt(0)}`
+  if (words.length === 0) {
+    return 'П';
+  }
+
+  if (words.length === 1) {
+    return words[0]
+      .slice(0, 2)
       .toUpperCase();
   }
 
-  return normalizedUserName
-    .slice(0, 2)
+  return `${words[0][0] ?? ''}${words[1][0] ?? ''}`
     .toUpperCase();
 }
 
@@ -146,12 +186,14 @@ export default function DashboardLayout({
   const displayName = useMemo(
     () =>
       getDisplayName(
+        user?.role,
         user?.first_name,
         user?.last_name,
         user?.user_name,
         user?.phone_number
       ),
     [
+      user?.role,
       user?.first_name,
       user?.last_name,
       user?.user_name,
@@ -160,17 +202,8 @@ export default function DashboardLayout({
   );
 
   const initials = useMemo(
-    () =>
-      getInitials(
-        user?.first_name,
-        user?.last_name,
-        user?.user_name
-      ),
-    [
-      user?.first_name,
-      user?.last_name,
-      user?.user_name,
-    ]
+    () => getInitials(displayName),
+    [displayName]
   );
 
   const displayedRole = useMemo(
@@ -183,74 +216,77 @@ export default function DashboardLayout({
   );
 
   useEffect(() => {
-  if (user?.id == null) {
-    setTotalUnreadMessages(0);
-    return;
-  }
+    if (user?.id == null) {
+      setTotalUnreadMessages(0);
+      return;
+    }
 
-  const userId: number = user.id;
+    const userId: number = user.id;
 
-  let isMounted = true;
+    let isMounted = true;
 
-  async function loadUnreadMessages(): Promise<void> {
-    try {
-      const response = await getUserUnreadCount(userId);
+    async function loadUnreadMessages(): Promise<void> {
+      try {
+        const response =
+          await getUserUnreadCount(userId);
 
-      if (isMounted) {
-        setTotalUnreadMessages(
-          Math.max(0, response.unread_count)
+        if (isMounted) {
+          setTotalUnreadMessages(
+            Math.max(0, response.unread_count)
+          );
+        }
+      } catch (requestError) {
+        console.error(
+          'Не удалось получить общий счётчик непрочитанных сообщений:',
+          requestError
         );
       }
-    } catch (requestError) {
-      console.error(
-        'Не удалось получить общий счётчик непрочитанных сообщений:',
-        requestError
-      );
     }
-  }
 
-  void loadUnreadMessages();
-
-  const intervalId = window.setInterval(() => {
     void loadUnreadMessages();
-  }, 5000);
 
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
+    const intervalId = window.setInterval(() => {
       void loadUnreadMessages();
-    }
-  };
+    }, 5000);
 
-  const handleWindowFocus = () => {
-    void loadUnreadMessages();
-  };
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === 'visible'
+      ) {
+        void loadUnreadMessages();
+      }
+    };
 
-  document.addEventListener(
-    'visibilitychange',
-    handleVisibilityChange
-  );
+    const handleWindowFocus = () => {
+      void loadUnreadMessages();
+    };
 
-  window.addEventListener(
-    'focus',
-    handleWindowFocus
-  );
-
-  return () => {
-    isMounted = false;
-
-    window.clearInterval(intervalId);
-
-    document.removeEventListener(
+    document.addEventListener(
       'visibilitychange',
       handleVisibilityChange
     );
 
-    window.removeEventListener(
+    window.addEventListener(
       'focus',
       handleWindowFocus
     );
-  };
-}, [user?.id]);
+
+    return () => {
+      isMounted = false;
+
+      window.clearInterval(intervalId);
+
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibilityChange
+      );
+
+      window.removeEventListener(
+        'focus',
+        handleWindowFocus
+      );
+    };
+  }, [user?.id]);
 
   const handleLogout = () => {
     logout();

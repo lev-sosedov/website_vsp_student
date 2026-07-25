@@ -128,33 +128,81 @@ function getEmbeddedLastMessage(
 
 function getUserDisplayName(
   user: UserProfile | undefined,
-  userId: number
+  fallbackUserId?: number | string
 ): string {
+  const fallback =
+    typeof fallbackUserId === 'string'
+      ? fallbackUserId
+      : fallbackUserId
+        ? `Пользователь №${fallbackUserId}`
+        : 'Пользователь';
+
   if (!user) {
-    return `Пользователь #${userId}`;
+    return fallback;
   }
 
-  const fullName = [
-    user.first_name,
+  const role = user.role?.toLowerCase();
+
+  /*
+   * Преподаватель, родитель и администратор:
+   * user_name — имя;
+   * last_name — отчество.
+   * Например: Антон Викторович.
+   */
+  if (
+    role === 'teacher' ||
+    role === 'parent' ||
+    role === 'admin'
+  ) {
+    const name = [
+      user.user_name,
+      user.last_name,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    return name || fallback;
+  }
+
+  /*
+   * Студент:
+   * first_name — фамилия;
+   * user_name — имя.
+   * Например: Соседов Лев.
+   */
+  if (role === 'student') {
+    const name = [
+      user.first_name,
+      user.user_name,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    return name || fallback;
+  }
+
+  const name = [
+    user.user_name,
     user.last_name,
   ]
+    .map((value) => value?.trim())
     .filter(Boolean)
     .join(' ')
     .trim();
 
-  return (
-    fullName ||
-    user.user_name?.trim() ||
-    `Пользователь #${userId}`
-  );
+  return name || fallback;
 }
 
 function getUserInitials(
   user: UserProfile | undefined,
-  userId: number
+  fallbackUserId?: number | string
 ): string {
   return getInitials(
-    getUserDisplayName(user, userId)
+    getUserDisplayName(user, fallbackUserId)
   );
 }
 
@@ -2154,11 +2202,10 @@ export default function Messages() {
                     const senderProfile =
                       usersById[message.sender_id];
 
-                    const senderName =
-                      getUserDisplayName(
-                        senderProfile,
-                        message.sender_id
-                      );
+                    const senderName = getUserDisplayName(
+                      senderProfile,
+                      `Пользователь №${message.sender_id}`
+                    );
 
                     const repliedMessage =
                       message.reply_to_message_id
@@ -2279,11 +2326,9 @@ export default function Messages() {
                                 Ответ: {
                                   repliedMessage
                                     ? getUserDisplayName(
-                                        usersById[
-                                          repliedMessage.sender_id
-                                        ],
-                                        repliedMessage.sender_id
-                                      )
+                                      usersById[repliedMessage.sender_id],
+                                      `Пользователь №${repliedMessage.sender_id}`
+                                    )
                                     : 'пользователь'
                                 }
                               </span>
