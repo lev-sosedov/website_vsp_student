@@ -51,7 +51,12 @@ interface ScheduleGroupOption {
   group: AcademicGroup;
 }
 
-interface WeekDay {
+type CalendarView =
+  | 'month'
+  | 'week'
+  | 'day';
+
+interface CalendarDay {
   date: Date;
   dateString: string;
   dayName: string;
@@ -68,6 +73,16 @@ const DAY_NAMES = [
   'Пятница',
   'Суббота',
   'Воскресенье',
+];
+
+const SHORT_DAY_NAMES = [
+  'Пн',
+  'Вт',
+  'Ср',
+  'Чт',
+  'Пт',
+  'Сб',
+  'Вс',
 ];
 
 const MONTH_NAMES = [
@@ -151,9 +166,48 @@ function startOfWeek(date: Date): Date {
   return result;
 }
 
+function startOfDay(date: Date): Date {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+
+  return result;
+}
+
+function startOfMonth(date: Date): Date {
+  const result = startOfDay(date);
+  result.setDate(1);
+
+  return result;
+}
+
+function endOfMonth(date: Date): Date {
+  const result = startOfMonth(date);
+  result.setMonth(result.getMonth() + 1);
+  result.setDate(0);
+
+  return result;
+}
+
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
+
+  return result;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const result = startOfDay(date);
+  const originalDay = result.getDate();
+
+  result.setDate(1);
+  result.setMonth(result.getMonth() + months);
+
+  const lastDayOfTargetMonth =
+    endOfMonth(result).getDate();
+
+  result.setDate(
+    Math.min(originalDay, lastDayOfTargetMonth)
+  );
 
   return result;
 }
@@ -189,6 +243,29 @@ function formatWeekRange(
   }
 
   return `${startDay} ${startMonth} ${startYear} — ${endDay} ${endMonth} ${endYear}`;
+}
+
+function formatMonthTitle(date: Date): string {
+  const monthName =
+    MONTH_NAMES[date.getMonth()];
+
+  return `${
+    monthName.charAt(0).toUpperCase() +
+    monthName.slice(1)
+  } ${date.getFullYear()}`;
+}
+
+function formatDayTitle(date: Date): string {
+  const dayName =
+    DAY_NAMES[
+      date.getDay() === 0
+        ? 6
+        : date.getDay() - 1
+    ];
+
+  return `${dayName}, ${date.getDate()} ${
+    MONTH_NAMES[date.getMonth()]
+  } ${date.getFullYear()}`;
 }
 
 function getLessonTitle(
@@ -278,8 +355,11 @@ export default function Schedule() {
     searchParams.get('groupId')
   );
 
-  const [selectedWeekStart, setSelectedWeekStart] =
-    useState<Date>(() => startOfWeek(new Date()));
+  const [calendarView, setCalendarView] =
+    useState<CalendarView>('week');
+
+  const [selectedDate, setSelectedDate] =
+    useState<Date>(() => startOfDay(new Date()));
 
   const [
     teacherGroups,
@@ -341,10 +421,42 @@ export default function Schedule() {
     });
   };
 
-  const selectedWeekEnd = useMemo(
-    () => addDays(selectedWeekStart, 6),
-    [selectedWeekStart]
-  );
+  const selectedPeriodStart = useMemo(() => {
+    switch (calendarView) {
+      case 'month':
+        return startOfMonth(selectedDate);
+
+      case 'day':
+        return startOfDay(selectedDate);
+
+      case 'week':
+      default:
+        return startOfWeek(selectedDate);
+    }
+  }, [
+    calendarView,
+    selectedDate,
+  ]);
+
+  const selectedPeriodEnd = useMemo(() => {
+    switch (calendarView) {
+      case 'month':
+        return endOfMonth(selectedDate);
+
+      case 'day':
+        return startOfDay(selectedDate);
+
+      case 'week':
+      default:
+        return addDays(
+          startOfWeek(selectedDate),
+          6
+        );
+    }
+  }, [
+    calendarView,
+    selectedDate,
+  ]);
 
   useEffect(() => {
     if (!isTeacher) {
@@ -588,10 +700,10 @@ export default function Schedule() {
 
     try {
       const dateFrom =
-        formatLocalDate(selectedWeekStart);
+        formatLocalDate(selectedPeriodStart);
 
       const dateTo =
-        formatLocalDate(selectedWeekEnd);
+        formatLocalDate(selectedPeriodEnd);
 
       let weekLessons: LessonSchedule[] = [];
 
@@ -784,7 +896,8 @@ export default function Schedule() {
     void loadSchedule();
   }, [
     user?.id,
-    selectedWeekStart,
+    selectedPeriodStart,
+    selectedPeriodEnd,
     selectedGroupId,
     teacherGroups,
     studentGroups,
@@ -793,54 +906,133 @@ export default function Schedule() {
     isTeacher,
   ]);
 
-  const weekDays = useMemo<WeekDay[]>(() => {
+  const calendarDays = useMemo<
+    CalendarDay[]
+  >(() => {
     const today = formatLocalDate(new Date());
 
-    return DAY_NAMES.map((dayName, index) => {
-      const dayDate = addDays(
-        selectedWeekStart,
-        index
-      );
+    const daysCount =
+      Math.round(
+        (selectedPeriodEnd.getTime() -
+          selectedPeriodStart.getTime()) /
+          (24 * 60 * 60 * 1000)
+      ) + 1;
 
-      const dateString =
-        formatLocalDate(dayDate);
+    return Array.from(
+      {
+        length: daysCount,
+      },
+      (_, index) => {
+        const dayDate = addDays(
+          selectedPeriodStart,
+          index
+        );
 
-      return {
-        date: dayDate,
-        dateString,
-        dayName,
+        const dateString =
+          formatLocalDate(dayDate);
 
-        shortDate: `${dayDate.getDate()} ${
-          MONTH_NAMES[dayDate.getMonth()]
-        }`,
+        const dayName =
+          DAY_NAMES[
+            dayDate.getDay() === 0
+              ? 6
+              : dayDate.getDay() - 1
+          ];
 
-        isToday: dateString === today,
+        return {
+          date: dayDate,
+          dateString,
+          dayName,
 
-        lessons: lessons.filter(
-          (lesson) =>
-            lesson.lesson_date === dateString
-        ),
-      };
+          shortDate: `${dayDate.getDate()} ${
+            MONTH_NAMES[dayDate.getMonth()]
+          }`,
+
+          isToday: dateString === today,
+
+          lessons: lessons.filter(
+            (lesson) =>
+              lesson.lesson_date === dateString
+          ),
+        };
+      }
+    );
+  }, [
+    lessons,
+    selectedPeriodStart,
+    selectedPeriodEnd,
+  ]);
+
+  const goToPreviousPeriod = () => {
+    setSelectedDate((currentDate) => {
+      switch (calendarView) {
+        case 'month':
+          return addMonths(currentDate, -1);
+
+        case 'day':
+          return addDays(currentDate, -1);
+
+        case 'week':
+        default:
+          return addDays(currentDate, -7);
+      }
     });
-  }, [lessons, selectedWeekStart]);
-
-  const goToPreviousWeek = () => {
-    setSelectedWeekStart((currentWeek) =>
-      addDays(currentWeek, -7)
-    );
   };
 
-  const goToNextWeek = () => {
-    setSelectedWeekStart((currentWeek) =>
-      addDays(currentWeek, 7)
-    );
+  const goToNextPeriod = () => {
+    setSelectedDate((currentDate) => {
+      switch (calendarView) {
+        case 'month':
+          return addMonths(currentDate, 1);
+
+        case 'day':
+          return addDays(currentDate, 1);
+
+        case 'week':
+        default:
+          return addDays(currentDate, 7);
+      }
+    });
   };
 
-  const goToCurrentWeek = () => {
-    setSelectedWeekStart(
-      startOfWeek(new Date())
-    );
+  const goToCurrentPeriod = () => {
+    setSelectedDate(startOfDay(new Date()));
   };
+
+  const periodTitle = useMemo(() => {
+    switch (calendarView) {
+      case 'month':
+        return formatMonthTitle(selectedDate);
+
+      case 'day':
+        return formatDayTitle(selectedDate);
+
+      case 'week':
+      default:
+        return formatWeekRange(
+          selectedPeriodStart,
+          selectedPeriodEnd
+        );
+    }
+  }, [
+    calendarView,
+    selectedDate,
+    selectedPeriodStart,
+    selectedPeriodEnd,
+  ]);
+
+  const currentPeriodButtonLabel =
+    calendarView === 'month'
+      ? 'Текущий месяц'
+      : calendarView === 'day'
+        ? 'Текущий день'
+        : 'Текущая неделя';
+
+  const scheduleSubtitle =
+    calendarView === 'month'
+      ? 'Ваши занятия на месяц'
+      : calendarView === 'day'
+        ? 'Ваши занятия на день'
+        : 'Ваши занятия на неделю';
 
   const groupOptions = isTeacher
     ? teacherGroups
@@ -859,6 +1051,9 @@ export default function Schedule() {
     (studentGroups.length > 1 &&
       selectedGroupId === null);
 
+  const monthStartOffset =
+    (selectedPeriodStart.getDay() + 6) % 7;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -868,47 +1063,88 @@ export default function Schedule() {
           </h1>
 
           <p className="mt-1 text-gray-500">
-            Ваши занятия на неделю
+            {scheduleSubtitle}
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={goToCurrentWeek}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-red-200 hover:text-red-600"
-          >
-            <Calendar className="h-4 w-4" />
-            Текущая неделя
-          </button>
-
-          <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={goToPreviousWeek}
-              aria-label="Предыдущая неделя"
-              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
-            <div className="min-w-52 px-3 text-center">
-              <p className="text-sm font-semibold text-gray-900">
-                {formatWeekRange(
-                  selectedWeekStart,
-                  selectedWeekEnd
-                )}
-              </p>
+        <div className="flex flex-col gap-3">
+          <div className="flex justify-start xl:justify-end">
+            <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
+              {(
+                [
+                  {
+                    value: 'month',
+                    label: 'Месяц',
+                  },
+                  {
+                    value: 'week',
+                    label: 'Неделя',
+                  },
+                  {
+                    value: 'day',
+                    label: 'День',
+                  },
+                ] as Array<{
+                  value: CalendarView;
+                  label: string;
+                }>
+              ).map((viewOption) => (
+                <button
+                  key={viewOption.value}
+                  type="button"
+                  onClick={() =>
+                    setCalendarView(
+                      viewOption.value
+                    )
+                  }
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    calendarView ===
+                    viewOption.value
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  {viewOption.label}
+                </button>
+              ))}
             </div>
+          </div>
 
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
-              onClick={goToNextWeek}
-              aria-label="Следующая неделя"
-              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+              onClick={goToCurrentPeriod}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-red-200 hover:text-red-600"
             >
-              <ChevronRight className="h-5 w-5" />
+              <Calendar className="h-4 w-4" />
+              {currentPeriodButtonLabel}
             </button>
+
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={goToPreviousPeriod}
+                aria-label="Предыдущий период"
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              <div className="min-w-52 px-3 text-center">
+                <p className="text-sm font-semibold text-gray-900">
+                  {periodTitle}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={goToNextPeriod}
+                aria-label="Следующий период"
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1014,8 +1250,140 @@ export default function Schedule() {
       )}
 
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {weekDays.map((day) => (
+        calendarView === 'month' ? (
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="min-w-[900px]">
+              <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+                {SHORT_DAY_NAMES.map(
+                  (dayName) => (
+                    <div
+                      key={dayName}
+                      className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500"
+                    >
+                      {dayName}
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div className="grid grid-cols-7">
+                {Array.from({
+                  length: monthStartOffset,
+                }).map((_, index) => (
+                  <div
+                    key={`empty-${index}`}
+                    className="min-h-40 border-b border-r border-gray-100 bg-gray-50/60"
+                  />
+                ))}
+
+                {calendarDays.map((day) => (
+                  <div
+                    key={day.dateString}
+                    className={`min-h-40 border-b border-r border-gray-100 p-2 ${
+                      day.isToday
+                        ? 'bg-red-50/70'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(day.date);
+                          setCalendarView('day');
+                        }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition hover:bg-red-100 hover:text-red-700 ${
+                          day.isToday
+                            ? 'bg-red-600 text-white hover:bg-red-700 hover:text-white'
+                            : 'text-gray-700'
+                        }`}
+                        title={`Открыть ${day.shortDate}`}
+                      >
+                        {day.date.getDate()}
+                      </button>
+
+                      {day.lessons.length > 0 && (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
+                          {day.lessons.length}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {day.lessons
+                        .slice(0, 3)
+                        .map((lesson) => {
+                          const isCancelled =
+                            lesson.status ===
+                            'cancelled';
+
+                          return (
+                            <div
+                              key={lesson.id}
+                              className={`rounded-lg border px-2 py-1.5 ${
+                                isCancelled
+                                  ? 'border-gray-200 bg-gray-50 opacity-60'
+                                  : 'border-red-100 bg-red-50'
+                              }`}
+                              title={`${formatTime(
+                                lesson.start_time
+                              )} — ${getLessonTitle(
+                                lesson
+                              )}`}
+                            >
+                              <p
+                                className={`truncate text-[11px] font-semibold ${
+                                  isCancelled
+                                    ? 'text-gray-500 line-through'
+                                    : 'text-red-700'
+                                }`}
+                              >
+                                {formatTime(
+                                  lesson.start_time
+                                )}
+                                {' '}
+                                {getLessonTitle(
+                                  lesson
+                                )}
+                              </p>
+
+                              {showLessonGroupName && (
+                                <p className="mt-0.5 truncate text-[10px] text-blue-600">
+                                  {lesson.groupName}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                      {day.lessons.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDate(day.date);
+                            setCalendarView('day');
+                          }}
+                          className="w-full rounded-lg px-2 py-1 text-left text-[11px] font-medium text-gray-500 transition hover:bg-gray-50 hover:text-red-600"
+                        >
+                          Ещё занятий:{' '}
+                          {day.lessons.length - 3}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+        <div
+          className={
+            calendarView === 'day'
+              ? 'grid grid-cols-1 gap-4'
+              : 'grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3'
+          }
+        >
+          {calendarDays.map((day) => (
             <section
               key={day.dateString}
               className={`card flex h-[520px] min-h-0 flex-col overflow-hidden ${
@@ -1244,6 +1612,7 @@ export default function Schedule() {
             </section>
           ))}
         </div>
+        )
       )}
     </div>
   );

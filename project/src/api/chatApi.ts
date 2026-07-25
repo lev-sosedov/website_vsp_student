@@ -118,6 +118,20 @@ export async function createChat(
   });
 }
 
+export async function ensureStudentAdminChat(
+  studentId: number
+): Promise<Chat> {
+  return chatRequest<Chat>(
+    '/api/v1/chats/student-admin/ensure',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        student_id: studentId,
+      }),
+    }
+  );
+}
+
 export async function getChats(
   userId: number
 ): Promise<ChatListResponse> {

@@ -17,6 +17,13 @@ export interface StudentHomeworkItem {
   lesson: LessonSchedule;
   submission: HomeworkSubmission | null;
   attachments: HomeworkAttachment[];
+  groupId: number;
+  groupName: string;
+}
+
+export interface StudentHomeworkGroup {
+  id: number;
+  name: string;
 }
 
 export interface StudentHomeworkData {
@@ -54,7 +61,10 @@ function isOverdue(
     return false;
   }
 
-  if (isGraded(submission)) {
+  if (
+    isGraded(submission) ||
+    isSubmitted(submission)
+  ) {
     return false;
   }
 
@@ -63,23 +73,36 @@ function isOverdue(
 }
 
 export async function loadStudentHomeworks(
-  groupId: number,
+  groups: StudentHomeworkGroup[],
   studentId: number
 ): Promise<StudentHomeworkData> {
   const [
-    lessons,
+    lessonsByGroup,
     homeworks,
     submissions,
   ] = await Promise.all([
-    getGroupLessons(groupId),
+    Promise.all(
+      groups.map((group) =>
+        getGroupLessons(group.id)
+      )
+    ),
     getPublishedHomeworks(),
     getStudentSubmissions(studentId),
   ]);
+
+  const lessons = lessonsByGroup.flat();
 
   const lessonsById = new Map(
     lessons.map((lesson) => [
       lesson.id,
       lesson,
+    ])
+  );
+
+  const groupNamesById = new Map(
+    groups.map((group) => [
+      group.id,
+      group.name,
     ])
   );
 
@@ -130,6 +153,12 @@ export async function loadStudentHomeworks(
               homework.id
             ) ?? null,
           attachments,
+          groupId: lesson.group_id,
+          groupName:
+            groupNamesById.get(
+              lesson.group_id
+            ) ??
+            `Группа №${lesson.group_id}`,
         };
       }
     )
@@ -144,8 +173,16 @@ export async function loadStudentHomeworks(
       second.homework.due_at ??
       second.lesson.lesson_date;
 
-    return firstDate.localeCompare(
-      secondDate
+    const dateComparison =
+      firstDate.localeCompare(secondDate);
+
+    if (dateComparison !== 0) {
+      return dateComparison;
+    }
+
+    return first.groupName.localeCompare(
+      second.groupName,
+      'ru'
     );
   });
 
@@ -154,10 +191,12 @@ export async function loadStudentHomeworks(
 
     pendingCount: items.filter(
       (item) =>
-        !item.submission ||
-        item.submission.status === 'draft' ||
-        item.submission.status ===
-          'needs_revision'
+        !isGraded(item.submission) &&
+        !isSubmitted(item.submission) &&
+        !isOverdue(
+          item.homework,
+          item.submission
+        )
     ).length,
 
     submittedCount: items.filter((item) =>

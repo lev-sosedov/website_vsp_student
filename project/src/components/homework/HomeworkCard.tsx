@@ -6,6 +6,7 @@ import {
   Circle,
   Clock,
   FileText,
+  Users,
 } from 'lucide-react';
 
 import type { HomeworkSubmissionStatus } from '../../api/homeworkApi';
@@ -14,6 +15,7 @@ import type { StudentHomeworkItem } from '../../services/homeworkService';
 interface HomeworkCardProps {
   item: StudentHomeworkItem;
   onOpen: (item: StudentHomeworkItem) => void;
+  showGroupName?: boolean;
 }
 
 interface StatusInfo {
@@ -157,6 +159,7 @@ function getStatusInfo(
 export default function HomeworkCard({
   item,
   onOpen,
+  showGroupName = false,
 }: HomeworkCardProps) {
   const submissionStatus =
     item.submission?.status ?? null;
@@ -199,9 +202,18 @@ export default function HomeworkCard({
           </div>
 
           <div className="min-w-0">
-            <h2 className="font-semibold text-gray-900">
-              {item.homework.title}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold text-gray-900">
+                {item.homework.title}
+              </h2>
+
+              {showGroupName && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                  <Users className="h-3.5 w-3.5" />
+                  {item.groupName}
+                </span>
+              )}
+            </div>
 
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500">
               <span className="inline-flex items-center gap-1.5">

@@ -34,7 +34,7 @@ export default function HomeworkStats({
       backgroundClass: 'bg-amber-50',
     },
     {
-      label: 'Оценено',
+      label: 'Проверено',
       value: gradedCount,
       icon: CheckCircle2,
       iconClass: 'text-green-600',

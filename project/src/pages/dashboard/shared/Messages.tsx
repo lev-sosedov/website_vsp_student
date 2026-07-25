@@ -27,6 +27,7 @@ import {
 
 import {
   deleteChatMessage,
+  ensureStudentAdminChat,
   getChatMessages,
   getChats,
   markChatAsRead,
@@ -35,6 +36,8 @@ import {
   unpinChatMessage,
   updateChatMessage,
 } from '../../../api/chatApi';
+
+import GroupChatMembers from '../../../components/messages/GroupChatMembers';
 
 import {
   ChatSocket,
@@ -53,11 +56,29 @@ import type {
 
 import { useAuth } from '../../../context/AuthContext';
 
+import {
+  loadMessageGroupDirectories,
+  openOrCreatePrivateChat,
+  type MessageDirectoryPerson,
+  type MessageGroupDirectory,
+} from '../../../services/messageDirectoryService';
+
 // =====================================================
 // Вспомогательные функции
 // =====================================================
 
-function getChatTitle(chat: Chat): string {
+function getChatTitle(
+  chat: Chat,
+  groupNamesById: Record<number, string> = {}
+): string {
+  if (
+    chat.chat_type === 'group' &&
+    chat.group_id &&
+    groupNamesById[chat.group_id]
+  ) {
+    return groupNamesById[chat.group_id];
+  }
+
   if (chat.title?.trim()) {
     return chat.title;
   }
@@ -399,7 +420,8 @@ type MessageContextMenuState = {
 
 export default function Messages() {
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] =
+    useSearchParams();
 
   const currentUserId = user?.id ?? null;
 
@@ -464,6 +486,28 @@ export default function Messages() {
     useState<Record<number, UserProfile>>({});
 
   const [
+    groupDirectoriesById,
+    setGroupDirectoriesById,
+  ] = useState<
+    Record<number, MessageGroupDirectory>
+  >({});
+
+  const [
+    loadingGroupIds,
+    setLoadingGroupIds,
+  ] = useState<Set<number>>(new Set());
+
+  const [
+    expandedGroupId,
+    setExpandedGroupId,
+  ] = useState<number | null>(null);
+
+  const [
+    openingStudentId,
+    setOpeningStudentId,
+  ] = useState<number | null>(null);
+
+  const [
     hasUnreadIncomingMessages,
     setHasUnreadIncomingMessages,
   ] = useState(false);
@@ -524,6 +568,37 @@ export default function Messages() {
     [chats, activeChatId]
   );
 
+  const groupChatIdsKey = useMemo(
+    () =>
+      [
+        ...new Set(
+          chats
+            .filter(
+              (chat) =>
+                chat.chat_type === 'group' &&
+                chat.group_id
+            )
+            .map((chat) => chat.group_id!)
+        ),
+      ]
+        .sort((first, second) => first - second)
+        .join(','),
+    [chats]
+  );
+
+  const groupNamesById = useMemo(() => {
+    const names: Record<number, string> = {};
+
+    Object.values(groupDirectoriesById).forEach(
+      (directory) => {
+        names[directory.groupId] =
+          directory.groupName;
+      }
+    );
+
+    return names;
+  }, [groupDirectoriesById]);
+
   const pinnedMessage = useMemo(
     () =>
       chatMessages.find(
@@ -544,7 +619,10 @@ export default function Messages() {
     }
 
     return chats.filter((chat) => {
-      const title = getChatTitle(chat)
+      const title = getChatTitle(
+        chat,
+        groupNamesById
+      )
         .toLowerCase();
 
       const description =
@@ -574,6 +652,7 @@ export default function Messages() {
     lastMessageByChatId,
     currentUserId,
     usersById,
+    groupNamesById,
   ]);
 
   const rememberLastMessage = useCallback(
@@ -697,6 +776,22 @@ export default function Messages() {
     }
 
     try {
+      if (
+        user?.role?.toLowerCase() ===
+        'student'
+      ) {
+        try {
+          await ensureStudentAdminChat(
+            currentUserId
+          );
+        } catch (adminChatError) {
+          console.warn(
+            'Не удалось гарантировать чат с администрацией:',
+            adminChatError
+          );
+        }
+      }
+
       const response = await getChats(
         currentUserId
       );
@@ -797,6 +892,7 @@ export default function Messages() {
   }, [
     currentUserId,
     requestedGroupId,
+    user?.role,
   ]);
 
   const refreshChatsSilently =
@@ -990,6 +1086,51 @@ export default function Messages() {
   useEffect(() => {
     void loadChats();
   }, [loadChats]);
+
+  useEffect(() => {
+    const groupIds = groupChatIdsKey
+      .split(',')
+      .map(Number)
+      .filter(
+        (groupId) =>
+          Number.isInteger(groupId) &&
+          groupId > 0
+      );
+
+    if (groupIds.length === 0) {
+      setGroupDirectoriesById({});
+      setLoadingGroupIds(new Set());
+      return;
+    }
+
+    let isCancelled = false;
+
+    setLoadingGroupIds(new Set(groupIds));
+
+    void loadMessageGroupDirectories(groupIds)
+      .then((directories) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setGroupDirectoriesById(directories);
+      })
+      .catch((directoryError) => {
+        console.error(
+          'Не удалось загрузить названия и участников групп:',
+          directoryError
+        );
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setLoadingGroupIds(new Set());
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [groupChatIdsKey]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1914,6 +2055,61 @@ export default function Messages() {
     }
   }
 
+  const handleStudentChatOpen = async (
+    student: MessageDirectoryPerson
+  ) => {
+    if (
+      currentUserId === null ||
+      student.userId === currentUserId ||
+      openingStudentId !== null
+    ) {
+      return;
+    }
+
+    setOpeningStudentId(student.userId);
+    setError(null);
+
+    try {
+      const privateChat =
+        await openOrCreatePrivateChat(
+          chats,
+          currentUserId,
+          student
+        );
+
+      setChats((currentChats) => {
+        const chatAlreadyExists =
+          currentChats.some(
+            (chat) =>
+              chat.id === privateChat.id
+          );
+
+        return chatAlreadyExists
+          ? currentChats
+          : [privateChat, ...currentChats];
+      });
+
+      const nextSearchParams =
+        new URLSearchParams(searchParams);
+
+      nextSearchParams.delete('groupId');
+      setSearchParams(nextSearchParams, {
+        replace: true,
+      });
+
+      setExpandedGroupId(null);
+      setActiveChatId(privateChat.id);
+    } catch (openError) {
+      setError(
+        openError instanceof Error
+          ? openError.message
+          : 'Не удалось открыть личный чат'
+      );
+    } finally {
+      setOpeningStudentId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -1992,7 +2188,10 @@ export default function Messages() {
               <div className="divide-y divide-gray-50">
                 {filteredChats.map((chat) => {
                   const title =
-                    getChatTitle(chat);
+                    getChatTitle(
+                      chat,
+                      groupNamesById
+                    );
 
                   const isActive =
                     chat.id === activeChatId;
@@ -2008,95 +2207,138 @@ export default function Messages() {
                   const hasUnread =
                     unreadCount > 0;
 
+                  const groupId =
+                    chat.chat_type === 'group'
+                      ? chat.group_id
+                      : null;
+
                   return (
-                    <button
-                      key={chat.id}
-                      type="button"
-                      onClick={() =>
-                        setActiveChatId(chat.id)
-                      }
-                      className={`flex w-full gap-3 p-4 text-left transition-colors hover:bg-gray-50 ${
-                        isActive
-                          ? 'bg-red-50'
-                          : ''
-                      }`}
-                    >
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-600">
-                        {getInitials(title)}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p
-                            className={`truncate text-sm text-gray-900 ${
-                              hasUnread
-                                ? 'font-bold'
-                                : 'font-semibold'
-                            }`}
-                          >
-                            {title}
-                          </p>
-
-                          <div className="flex flex-shrink-0 items-center gap-2">
-                            <span
-                              className={`text-xs ${
-                                hasUnread
-                                  ? 'font-semibold text-red-600'
-                                  : 'text-gray-400'
-                              }`}
-                            >
-                              {formatChatDate(
-                                chat.updated_at
-                              )}
-                            </span>
-
-                            {hasUnread && (
-                              <span
-                                className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                                title={`${unreadCount} непрочитанных сообщений`}
-                              >
-                                {unreadCount > 99
-                                  ? '99+'
-                                  : unreadCount}
-                              </span>
-                            )}
-                          </div>
+                    <div key={chat.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveChatId(chat.id)
+                        }
+                        className={`flex w-full gap-3 p-4 text-left transition-colors hover:bg-gray-50 ${
+                          isActive
+                            ? 'bg-red-50'
+                            : ''
+                        }`}
+                      >
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-600">
+                          {getInitials(title)}
                         </div>
 
-                        <p className="text-xs text-gray-400">
-                          {getChatSubtitle(chat)}
-                        </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p
+                              className={`truncate text-sm text-gray-900 ${
+                                hasUnread
+                                  ? 'font-bold'
+                                  : 'font-semibold'
+                              }`}
+                            >
+                              {title}
+                            </p>
 
-                        <p
-                          className={`mt-1 truncate text-xs ${
-                            hasUnread
-                              ? 'font-semibold text-gray-800'
-                              : lastMessage
-                                ? 'text-gray-600'
-                                : 'text-gray-400'
-                          }`}
-                          title={
-                            lastMessage
+                            <div className="flex flex-shrink-0 items-center gap-2">
+                              <span
+                                className={`text-xs ${
+                                  hasUnread
+                                    ? 'font-semibold text-red-600'
+                                    : 'text-gray-400'
+                                }`}
+                              >
+                                {formatChatDate(
+                                  chat.updated_at
+                                )}
+                              </span>
+
+                              {hasUnread && (
+                                <span
+                                  className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                                  title={`${unreadCount} непрочитанных сообщений`}
+                                >
+                                  {unreadCount > 99
+                                    ? '99+'
+                                    : unreadCount}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-gray-400">
+                            {getChatSubtitle(chat)}
+                          </p>
+
+                          <p
+                            className={`mt-1 truncate text-xs ${
+                              hasUnread
+                                ? 'font-semibold text-gray-800'
+                                : lastMessage
+                                  ? 'text-gray-600'
+                                  : 'text-gray-400'
+                            }`}
+                            title={
+                              lastMessage
+                                ? getMessagePreview(
+                                    lastMessage,
+                                    currentUserId,
+                                    usersById
+                                  )
+                                : chat.description ||
+                                  'Сообщений пока нет'
+                            }
+                          >
+                            {lastMessage
                               ? getMessagePreview(
                                   lastMessage,
                                   currentUserId,
                                   usersById
                                 )
                               : chat.description ||
-                                'Сообщений пока нет'
+                                'Сообщений пока нет'}
+                          </p>
+                        </div>
+                      </button>
+
+                      {groupId && (
+                        <GroupChatMembers
+                          directory={
+                            groupDirectoriesById[
+                              groupId
+                            ] ?? null
                           }
-                        >
-                          {lastMessage
-                            ? getMessagePreview(
-                                lastMessage,
-                                currentUserId,
-                                usersById
-                              )
-                            : chat.description ||
-                              'Сообщений пока нет'}
-                        </p>
-                      </div>
-                    </button>
+                          isExpanded={
+                            expandedGroupId ===
+                            groupId
+                          }
+                          isLoading={loadingGroupIds.has(
+                            groupId
+                          )}
+                          currentUserId={
+                            currentUserId
+                          }
+                          openingStudentId={
+                            openingStudentId
+                          }
+                          onToggle={() =>
+                            setExpandedGroupId(
+                              (
+                                currentGroupId
+                              ) =>
+                                currentGroupId ===
+                                groupId
+                                  ? null
+                                  : groupId
+                            )
+                          }
+                          onStudentClick={
+                            handleStudentChatOpen
+                          }
+                        />
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -2124,13 +2366,19 @@ export default function Messages() {
               <header className="flex items-center gap-3 border-b border-gray-100 p-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-600">
                   {getInitials(
-                    getChatTitle(activeChat)
+                    getChatTitle(
+                      activeChat,
+                      groupNamesById
+                    )
                   )}
                 </div>
 
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-gray-900">
-                    {getChatTitle(activeChat)}
+                    {getChatTitle(
+                      activeChat,
+                      groupNamesById
+                    )}
                   </p>
 
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -2309,8 +2557,13 @@ export default function Messages() {
                             : 'justify-start'
                         }`}
                       >
-                        {!isOwnMessage && (
-                          <div className="mr-2 mt-auto flex h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-red-100 text-[11px] font-semibold text-red-600">
+                        <div
+                          className={`mt-auto flex h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-red-100 text-[11px] font-semibold text-red-600 ${
+                            isOwnMessage
+                              ? 'order-2 ml-2'
+                              : 'mr-2'
+                          }`}
+                        >
                             {senderProfile?.avatar_url ? (
                               <img
                                 src={
@@ -2327,8 +2580,7 @@ export default function Messages() {
                                 )}
                               </span>
                             )}
-                          </div>
-                        )}
+                        </div>
 
                         <div
                           className={`group max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm sm:max-w-md ${
@@ -2337,11 +2589,15 @@ export default function Messages() {
                               : 'rounded-tl-sm border border-gray-100 bg-white'
                           }`}
                         >
-                          {!isOwnMessage && (
-                            <p className="mb-1 text-xs font-medium text-red-600">
-                              {senderName}
-                            </p>
-                          )}
+                          <p
+                            className={`mb-1 text-xs font-medium ${
+                              isOwnMessage
+                                ? 'text-white/90'
+                                : 'text-red-600'
+                            }`}
+                          >
+                            {senderName}
+                          </p>
 
                           {message.reply_to_message_id && (
                             <button

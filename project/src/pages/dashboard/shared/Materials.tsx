@@ -16,11 +16,15 @@ import {
   RefreshCw,
   Search,
   UserRound,
+  Users,
   Video,
 } from 'lucide-react';
 
 import { useAuth } from '../../../context/AuthContext';
-import { getPrimaryStudentGroupMembership } from '../../../api/academicApi';
+import {
+  getGroup,
+  getStudentGroupMemberships,
+} from '../../../api/academicApi';
 import {
   getAttachmentTypeLabel,
   getPublishedLessonContents,
@@ -41,6 +45,13 @@ interface MaterialItem {
   lesson: LessonSchedule;
   attachments: LessonAttachment[];
   links: LessonLink[];
+  groupId: number;
+  groupName: string;
+}
+
+interface StudentMaterialGroup {
+  id: number;
+  name: string;
 }
 
 type MaterialFilter =
@@ -158,6 +169,15 @@ export default function Materials() {
   const [error, setError] =
     useState<string | null>(null);
 
+  const [groups, setGroups] = useState<
+    StudentMaterialGroup[]
+  >([]);
+
+  const [
+    selectedGroupId,
+    setSelectedGroupId,
+  ] = useState<number | null>(null);
+
   const [searchQuery, setSearchQuery] =
     useState('');
 
@@ -168,6 +188,7 @@ export default function Materials() {
     async () => {
       if (!user?.id) {
         setMaterials([]);
+        setGroups([]);
         setError(
           'Не удалось определить текущего пользователя'
         );
@@ -180,13 +201,23 @@ export default function Materials() {
       setError(null);
 
       try {
-        const membership =
-          await getPrimaryStudentGroupMembership(
+        const memberships =
+          await getStudentGroupMemberships(
             user.id
           );
 
-        if (!membership?.group_id) {
+        const groupIds = [
+          ...new Set(
+            memberships.map(
+              (membership) =>
+                membership.group_id
+            )
+          ),
+        ];
+
+        if (groupIds.length === 0) {
           setMaterials([]);
+          setGroups([]);
           setError(
             'Пользователь пока не добавлен в учебную группу'
           );
@@ -194,18 +225,80 @@ export default function Materials() {
           return;
         }
 
-        const [groupLessons, publishedContents] =
-          await Promise.all([
-            getGroupLessons(
-              membership.group_id
-            ),
+        const studentGroups = (
+          await Promise.all(
+            groupIds.map(async (groupId) => {
+              const group =
+                await getGroup(groupId);
+
+              return {
+                id: group.id,
+                name:
+                  group.name ||
+                  `Группа №${group.id}`,
+              };
+            })
+          )
+        ).sort((first, second) =>
+          first.name.localeCompare(
+            second.name,
+            'ru'
+          )
+        );
+
+        setGroups(studentGroups);
+
+        const selectedGroupExists =
+          selectedGroupId === null ||
+          studentGroups.some(
+            (group) =>
+              group.id === selectedGroupId
+          );
+
+        const normalizedGroupId =
+          selectedGroupExists
+            ? selectedGroupId
+            : null;
+
+        if (!selectedGroupExists) {
+          setSelectedGroupId(null);
+        }
+
+        const groupsToLoad =
+          normalizedGroupId === null
+            ? studentGroups
+            : studentGroups.filter(
+                (group) =>
+                  group.id ===
+                  normalizedGroupId
+              );
+
+        const [
+          groupLessonLists,
+          publishedContents,
+        ] = await Promise.all([
+          Promise.all(
+            groupsToLoad.map((group) =>
+              getGroupLessons(group.id)
+            )
+          ),
             getPublishedLessonContents(),
-          ]);
+        ]);
+
+        const groupLessons =
+          groupLessonLists.flat();
 
         const lessonsById = new Map(
           groupLessons.map((lesson) => [
             lesson.id,
             lesson,
+          ])
+        );
+
+        const groupNamesById = new Map(
+          studentGroups.map((group) => [
+            group.id,
+            group.name,
           ])
         );
 
@@ -260,6 +353,12 @@ export default function Materials() {
                   lesson,
                   attachments,
                   links,
+                  groupId: lesson.group_id,
+                  groupName:
+                    groupNamesById.get(
+                      lesson.group_id
+                    ) ??
+                    `Группа №${lesson.group_id}`,
                 };
               }
             )
@@ -292,7 +391,7 @@ export default function Materials() {
         setIsLoading(false);
       }
     },
-    [user?.id]
+    [selectedGroupId, user?.id]
   );
 
   useEffect(() => {
@@ -317,6 +416,9 @@ export default function Materials() {
           ?.toLowerCase()
           .includes(normalizedQuery) ||
         getLessonTitle(material.lesson)
+          .toLowerCase()
+          .includes(normalizedQuery) ||
+        material.groupName
           .toLowerCase()
           .includes(normalizedQuery) ||
         material.attachments.some(
@@ -431,20 +533,51 @@ export default function Materials() {
             Лекции, презентации, файлы и полезные ссылки
           </p>
         </div>
-
-        {!isLoading && !error && (
-          <button
-            type="button"
-            onClick={() =>
-              void loadMaterials()
-            }
-            className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-red-200 hover:text-red-600 xl:self-auto"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Обновить
-          </button>
-        )}
       </div>
+
+      {!isLoading &&
+        !error &&
+        groups.length > 1 && (
+          <div className="card p-4 sm:p-5">
+            <label
+              htmlFor="materials-group"
+              className="mb-2 block text-sm font-medium text-gray-700"
+            >
+              Группа
+            </label>
+
+            <select
+              id="materials-group"
+              value={
+                selectedGroupId ?? ''
+              }
+              onChange={(event) => {
+                const value =
+                  event.target.value;
+
+                setSelectedGroupId(
+                  value
+                    ? Number(value)
+                    : null
+                );
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100 sm:max-w-md"
+            >
+              <option value="">
+                Все группы
+              </option>
+
+              {groups.map((group) => (
+                <option
+                  key={group.id}
+                  value={group.id}
+                >
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
       {!isLoading && !error && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -659,6 +792,17 @@ export default function Materials() {
                                 .title
                             }
                           </h2>
+
+                          {groups.length > 1 &&
+                            selectedGroupId ===
+                              null && (
+                              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                <Users className="h-3.5 w-3.5" />
+                                {
+                                  material.groupName
+                                }
+                              </span>
+                            )}
 
                           {material.content
                             .summary && (

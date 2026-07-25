@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -13,6 +14,7 @@ import {
   MessageSquareText,
   RefreshCw,
   ShieldCheck,
+  Users,
   XCircle,
 } from 'lucide-react';
 
@@ -25,6 +27,11 @@ import {
 } from '../../../api/attendanceApi';
 
 import {
+  getGroup,
+  getStudentGroupMemberships,
+} from '../../../api/academicApi';
+
+import {
   getLesson,
   type LessonSchedule,
 } from '../../../api/scheduleApi';
@@ -32,6 +39,13 @@ import {
 interface AttendanceRow {
   attendance: AttendanceRecord;
   lesson: LessonSchedule | null;
+  groupId: number | null;
+  groupName: string | null;
+}
+
+interface StudentAttendanceGroup {
+  id: number;
+  name: string;
 }
 
 const statusLabels: Record<
@@ -124,117 +138,243 @@ export default function Attendance() {
   const [error, setError] =
     useState<string | null>(null);
 
+  const [groups, setGroups] = useState<
+    StudentAttendanceGroup[]
+  >([]);
+
+  const [
+    selectedGroupId,
+    setSelectedGroupId,
+  ] = useState<number | null>(null);
+
   const studentId = Number(user?.id ?? 0);
 
-  const loadAttendance = async () => {
-    if (
-      !Number.isInteger(studentId) ||
-      studentId <= 0
-    ) {
-      setError(
-        'Не удалось определить ID студента'
-      );
+  const loadAttendance = useCallback(
+    async () => {
+      if (
+        !Number.isInteger(studentId) ||
+        studentId <= 0
+      ) {
+        setError(
+          'Не удалось определить ID студента'
+        );
 
-      setRows([]);
-      setLoading(false);
+        setRows([]);
+        setGroups([]);
+        setLoading(false);
 
-      return;
-    }
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      const response =
-        await getStudentAttendance(studentId);
+      try {
+        const [memberships, response] =
+          await Promise.all([
+            getStudentGroupMemberships(
+              studentId
+            ),
+            getStudentAttendance(studentId),
+          ]);
 
-      const lessonIds = Array.from(
-        new Set(
-          response.items.map(
-            (item) => item.lesson_id
-          )
-        )
-      );
+        const groupIds = [
+          ...new Set(
+            memberships.map(
+              (membership) =>
+                membership.group_id
+            )
+          ),
+        ];
 
-      const lessonResults = await Promise.all(
-        lessonIds.map(async (lessonId) => {
-          try {
-            const lesson =
-              await getLesson(lessonId);
-
-            return [
-              lessonId,
-              lesson,
-            ] as const;
-          } catch (lessonError) {
-            console.error(
-              `Не удалось загрузить занятие ${lessonId}:`,
-              lessonError
-            );
-
-            return [
-              lessonId,
-              null,
-            ] as const;
-          }
-        })
-      );
-
-      const lessonMap = new Map<
-        number,
-        LessonSchedule | null
-      >(lessonResults);
-
-      const nextRows = response.items
-        .map((attendance) => ({
-          attendance,
-          lesson:
-            lessonMap.get(
-              attendance.lesson_id
-            ) ?? null,
-        }))
-        .sort((first, second) => {
-          const firstDate =
-            first.lesson?.lesson_date ?? '';
-
-          const secondDate =
-            second.lesson?.lesson_date ?? '';
-
-          const dateComparison =
-            secondDate.localeCompare(firstDate);
-
-          if (dateComparison !== 0) {
-            return dateComparison;
-          }
-
-          const firstTime =
-            first.lesson?.start_time ?? '';
-
-          const secondTime =
-            second.lesson?.start_time ?? '';
-
-          return secondTime.localeCompare(
-            firstTime
+        if (groupIds.length === 0) {
+          setRows([]);
+          setGroups([]);
+          setError(
+            'Пользователь пока не добавлен в учебную группу'
           );
-        });
 
-      setRows(nextRows);
-    } catch (loadError) {
-      console.error(
-        'Ошибка загрузки посещаемости:',
-        loadError
-      );
+          return;
+        }
 
-      setError(getErrorMessage(loadError));
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+        const studentGroups = (
+          await Promise.all(
+            groupIds.map(async (groupId) => {
+              const group =
+                await getGroup(groupId);
+
+              return {
+                id: group.id,
+                name:
+                  group.name ||
+                  `Группа №${group.id}`,
+              };
+            })
+          )
+        ).sort((first, second) =>
+          first.name.localeCompare(
+            second.name,
+            'ru'
+          )
+        );
+
+        setGroups(studentGroups);
+
+        const selectedGroupExists =
+          selectedGroupId === null ||
+          studentGroups.some(
+            (group) =>
+              group.id === selectedGroupId
+          );
+
+        const normalizedGroupId =
+          selectedGroupExists
+            ? selectedGroupId
+            : null;
+
+        if (!selectedGroupExists) {
+          setSelectedGroupId(null);
+        }
+
+        const groupNamesById = new Map(
+          studentGroups.map((group) => [
+            group.id,
+            group.name,
+          ])
+        );
+
+        const activeGroupIds = new Set(
+          studentGroups.map(
+            (group) => group.id
+          )
+        );
+
+        const lessonIds = Array.from(
+          new Set(
+            response.items.map(
+              (item) => item.lesson_id
+            )
+          )
+        );
+
+        const lessonResults =
+          await Promise.all(
+            lessonIds.map(async (lessonId) => {
+              try {
+                const lesson =
+                  await getLesson(lessonId);
+
+                return [
+                  lessonId,
+                  lesson,
+                ] as const;
+              } catch (lessonError) {
+                console.error(
+                  `Не удалось загрузить занятие ${lessonId}:`,
+                  lessonError
+                );
+
+                return [
+                  lessonId,
+                  null,
+                ] as const;
+              }
+            })
+          );
+
+        const lessonMap = new Map<
+          number,
+          LessonSchedule | null
+        >(lessonResults);
+
+        const nextRows = response.items
+          .map((attendance): AttendanceRow => {
+            const lesson =
+              lessonMap.get(
+                attendance.lesson_id
+              ) ?? null;
+
+            const groupId =
+              lesson?.group_id ?? null;
+
+            return {
+              attendance,
+              lesson,
+              groupId,
+              groupName:
+                groupId === null
+                  ? null
+                  : (groupNamesById.get(
+                      groupId
+                    ) ??
+                    `Группа №${groupId}`),
+            };
+          })
+          .filter((row) => {
+            if (row.groupId === null) {
+              return (
+                normalizedGroupId === null
+              );
+            }
+
+            if (
+              !activeGroupIds.has(row.groupId)
+            ) {
+              return false;
+            }
+
+            return (
+              normalizedGroupId === null ||
+              row.groupId ===
+                normalizedGroupId
+            );
+          })
+          .sort((first, second) => {
+            const firstDate =
+              first.lesson?.lesson_date ?? '';
+
+            const secondDate =
+              second.lesson?.lesson_date ?? '';
+
+            const dateComparison =
+              secondDate.localeCompare(
+                firstDate
+              );
+
+            if (dateComparison !== 0) {
+              return dateComparison;
+            }
+
+            const firstTime =
+              first.lesson?.start_time ?? '';
+
+            const secondTime =
+              second.lesson?.start_time ?? '';
+
+            return secondTime.localeCompare(
+              firstTime
+            );
+          });
+
+        setRows(nextRows);
+      } catch (loadError) {
+        console.error(
+          'Ошибка загрузки посещаемости:',
+          loadError
+        );
+
+        setError(getErrorMessage(loadError));
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [selectedGroupId, studentId]
+  );
 
   useEffect(() => {
     void loadAttendance();
-  }, [studentId]);
+  }, [loadAttendance]);
 
   const statistics = useMemo(() => {
     const present = rows.filter(
@@ -320,15 +460,6 @@ export default function Attendance() {
             опозданий
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadAttendance()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Обновить
-        </button>
       </div>
 
       {error && (
@@ -344,6 +475,44 @@ export default function Attendance() {
               {error}
             </p>
           </div>
+        </div>
+      )}
+
+      {!error && groups.length > 1 && (
+        <div className="card p-4 sm:p-5">
+          <label
+            htmlFor="attendance-group"
+            className="mb-2 block text-sm font-medium text-gray-700"
+          >
+            Группа
+          </label>
+
+          <select
+            id="attendance-group"
+            value={selectedGroupId ?? ''}
+            onChange={(event) => {
+              const value =
+                event.target.value;
+
+              setSelectedGroupId(
+                value ? Number(value) : null
+              );
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100 sm:max-w-md"
+          >
+            <option value="">
+              Все группы
+            </option>
+
+            {groups.map((group) => (
+              <option
+                key={group.id}
+                value={group.id}
+              >
+                {group.name}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -485,7 +654,11 @@ export default function Attendance() {
         ) : (
           <div className="divide-y divide-gray-100">
             {rows.map(
-              ({ attendance, lesson }) => (
+              ({
+                attendance,
+                lesson,
+                groupName,
+              }) => (
                 <div
                   key={attendance.id}
                   className="p-5 sm:p-6 hover:bg-gray-50/70 transition-colors"
@@ -513,6 +686,16 @@ export default function Attendance() {
                             ]
                           }
                         </span>
+
+                        {groups.length > 1 &&
+                          selectedGroupId ===
+                            null &&
+                          groupName && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                              <Users className="h-3.5 w-3.5" />
+                              {groupName}
+                            </span>
+                          )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-sm text-gray-500">

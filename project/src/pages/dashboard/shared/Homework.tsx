@@ -17,7 +17,10 @@ import {
   updateHomeworkSubmission,
 } from '../../../api/homeworkApi';
 
-import { getPrimaryStudentGroupMembership } from '../../../api/academicApi';
+import {
+  getGroup,
+  getStudentGroupMemberships,
+} from '../../../api/academicApi';
 import HomeworkCard from '../../../components/homework/HomeworkCard';
 import HomeworkStats from '../../../components/homework/HomeworkStats';
 import HomeworkSubmissionModal from '../../../components/homework/HomeworkSubmissionModal';
@@ -26,6 +29,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   loadStudentHomeworks,
   type StudentHomeworkData,
+  type StudentHomeworkGroup,
   type StudentHomeworkItem,
 } from '../../../services/homeworkService';
 
@@ -61,6 +65,15 @@ export default function Homework() {
   const [error, setError] =
     useState<string | null>(null);
 
+  const [groups, setGroups] = useState<
+    StudentHomeworkGroup[]
+  >([]);
+
+  const [
+    selectedGroupId,
+    setSelectedGroupId,
+  ] = useState<number | null>(null);
+
   const [
     selectedHomework,
     setSelectedHomework,
@@ -82,6 +95,7 @@ export default function Homework() {
     async () => {
       if (!user?.id) {
         setData(EMPTY_DATA);
+        setGroups([]);
         setError(
           'Не удалось определить текущего пользователя'
         );
@@ -94,13 +108,23 @@ export default function Homework() {
       setError(null);
 
       try {
-        const membership =
-          await getPrimaryStudentGroupMembership(
+        const memberships =
+          await getStudentGroupMemberships(
             user.id
           );
 
-        if (!membership?.group_id) {
+        const groupIds = [
+          ...new Set(
+            memberships.map(
+              (membership) =>
+                membership.group_id
+            )
+          ),
+        ];
+
+        if (groupIds.length === 0) {
           setData(EMPTY_DATA);
+          setGroups([]);
           setError(
             'Пользователь пока не добавлен в учебную группу'
           );
@@ -108,9 +132,57 @@ export default function Homework() {
           return;
         }
 
+        const studentGroups = (
+          await Promise.all(
+            groupIds.map(async (groupId) => {
+              const group =
+                await getGroup(groupId);
+
+              return {
+                id: group.id,
+                name:
+                  group.name ||
+                  `Группа №${group.id}`,
+              };
+            })
+          )
+        ).sort((first, second) =>
+          first.name.localeCompare(
+            second.name,
+            'ru'
+          )
+        );
+
+        setGroups(studentGroups);
+
+        const selectedGroupExists =
+          selectedGroupId === null ||
+          studentGroups.some(
+            (group) =>
+              group.id === selectedGroupId
+          );
+
+        const normalizedGroupId =
+          selectedGroupExists
+            ? selectedGroupId
+            : null;
+
+        if (!selectedGroupExists) {
+          setSelectedGroupId(null);
+        }
+
+        const groupsToLoad =
+          normalizedGroupId === null
+            ? studentGroups
+            : studentGroups.filter(
+                (group) =>
+                  group.id ===
+                  normalizedGroupId
+              );
+
         const homeworkData =
           await loadStudentHomeworks(
-            membership.group_id,
+            groupsToLoad,
             user.id
           );
 
@@ -124,7 +196,7 @@ export default function Homework() {
         setIsLoading(false);
       }
     },
-    [user?.id]
+    [selectedGroupId, user?.id]
   );
 
   useEffect(() => {
@@ -265,20 +337,51 @@ export default function Homework() {
             Все ваши задания и их статусы
           </p>
         </div>
-
-        {!isLoading && !error && (
-          <button
-            type="button"
-            onClick={() =>
-              void loadHomework()
-            }
-            className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-red-200 hover:text-red-600"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Обновить
-          </button>
-        )}
       </div>
+
+      {!isLoading &&
+        !error &&
+        groups.length > 1 && (
+          <div className="card p-4 sm:p-5">
+            <label
+              htmlFor="homework-group"
+              className="mb-2 block text-sm font-medium text-gray-700"
+            >
+              Группа
+            </label>
+
+            <select
+              id="homework-group"
+              value={
+                selectedGroupId ?? ''
+              }
+              onChange={(event) => {
+                const value =
+                  event.target.value;
+
+                setSelectedGroupId(
+                  value
+                    ? Number(value)
+                    : null
+                );
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100 sm:max-w-md"
+            >
+              <option value="">
+                Все группы
+              </option>
+
+              {groups.map((group) => (
+                <option
+                  key={group.id}
+                  value={group.id}
+                >
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
       {!isLoading && !error && (
         <HomeworkStats
@@ -369,6 +472,10 @@ export default function Homework() {
                   key={item.homework.id}
                   item={item}
                   onOpen={openHomework}
+                  showGroupName={
+                    groups.length > 1 &&
+                    selectedGroupId === null
+                  }
                 />
               ))}
             </div>
