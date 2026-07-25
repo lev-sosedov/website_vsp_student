@@ -151,6 +151,98 @@ function getEmbeddedLastMessage(
   );
 }
 
+function areChatListsEqual(
+  firstChats: Chat[],
+  secondChats: Chat[]
+): boolean {
+  if (firstChats.length !== secondChats.length) {
+    return false;
+  }
+
+  return firstChats.every((firstChat, index) => {
+    const secondChat = secondChats[index];
+
+    if (!secondChat) {
+      return false;
+    }
+
+    const firstLastMessage =
+      getEmbeddedLastMessage(firstChat);
+
+    const secondLastMessage =
+      getEmbeddedLastMessage(secondChat);
+
+    return (
+      firstChat.id === secondChat.id &&
+      firstChat.chat_type ===
+        secondChat.chat_type &&
+      firstChat.title === secondChat.title &&
+      firstChat.description ===
+        secondChat.description &&
+      firstChat.group_id ===
+        secondChat.group_id &&
+      firstChat.lesson_id ===
+        secondChat.lesson_id &&
+      firstChat.updated_at ===
+        secondChat.updated_at &&
+      getEmbeddedUnreadCount(firstChat) ===
+        getEmbeddedUnreadCount(secondChat) &&
+      firstLastMessage?.id ===
+        secondLastMessage?.id &&
+      firstLastMessage?.text ===
+        secondLastMessage?.text &&
+      firstLastMessage?.is_deleted ===
+        secondLastMessage?.is_deleted
+    );
+  });
+}
+
+function areMessageMapsEqual(
+  firstMessages: Record<number, ChatMessage>,
+  secondMessages: Record<number, ChatMessage>
+): boolean {
+  const firstIds = Object.keys(firstMessages);
+  const secondIds = Object.keys(secondMessages);
+
+  if (firstIds.length !== secondIds.length) {
+    return false;
+  }
+
+  return firstIds.every((chatId) => {
+    const firstMessage =
+      firstMessages[Number(chatId)];
+
+    const secondMessage =
+      secondMessages[Number(chatId)];
+
+    return (
+      firstMessage?.id === secondMessage?.id &&
+      firstMessage?.text === secondMessage?.text &&
+      firstMessage?.is_deleted ===
+        secondMessage?.is_deleted &&
+      firstMessage?.created_at ===
+        secondMessage?.created_at
+    );
+  });
+}
+
+function areCountMapsEqual(
+  firstCounts: Record<number, number>,
+  secondCounts: Record<number, number>
+): boolean {
+  const firstIds = Object.keys(firstCounts);
+  const secondIds = Object.keys(secondCounts);
+
+  return (
+    firstIds.length === secondIds.length &&
+    firstIds.every(
+      (chatId) =>
+        firstCounts[Number(chatId)] ===
+        secondCounts[Number(chatId)]
+    )
+  );
+}
+
 function getUserDisplayName(
   user: UserProfile | undefined,
   fallbackUserId?: number | string
@@ -436,6 +528,17 @@ export default function Messages() {
       : null;
   }, [searchParams]);
 
+  const requestedChatId = useMemo(() => {
+    const chatId = Number(
+      searchParams.get('chatId')
+    );
+
+    return Number.isInteger(chatId) &&
+      chatId > 0
+      ? chatId
+      : null;
+  }, [searchParams]);
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
     useState<number | null>(null);
@@ -503,9 +606,14 @@ export default function Messages() {
   ] = useState<number | null>(null);
 
   const [
-    openingStudentId,
-    setOpeningStudentId,
+    openingPersonId,
+    setOpeningPersonId,
   ] = useState<number | null>(null);
+
+  const [
+    groupDirectoryReloadToken,
+    setGroupDirectoryReloadToken,
+  ] = useState(0);
 
   const [
     hasUnreadIncomingMessages,
@@ -560,6 +668,9 @@ export default function Messages() {
   const messageElementRefs =
     useRef<Map<number, HTMLDivElement>>(new Map());
 
+  const attemptedGroupDirectoryIdsRef =
+    useRef<Set<number>>(new Set());
+
   const activeChat = useMemo(
     () =>
       chats.find(
@@ -570,18 +681,17 @@ export default function Messages() {
 
   const groupChatIdsKey = useMemo(
     () =>
-      [
-        ...new Set(
-          chats
-            .filter(
-              (chat) =>
-                chat.chat_type === 'group' &&
-                chat.group_id
-            )
-            .map((chat) => chat.group_id!)
-        ),
-      ]
-        .sort((first, second) => first - second)
+      chats
+        .filter(
+          (chat) =>
+            chat.chat_type === 'group' &&
+            chat.group_id
+        )
+        .map(
+          (chat) =>
+            `${chat.group_id}:${chat.created_by}`
+        )
+        .sort()
         .join(','),
     [chats]
   );
@@ -855,7 +965,22 @@ export default function Messages() {
                 chat.group_id === requestedGroupId
             ) ?? null;
 
+      const requestedChat =
+        requestedChatId === null
+          ? null
+          : availableChats.find(
+              (chat) =>
+                chat.id === requestedChatId
+            ) ?? null;
+
       if (
+        requestedChatId !== null &&
+        requestedChat === null
+      ) {
+        setError(
+          `Чат №${requestedChatId} не найден или у вас нет к нему доступа.`
+        );
+      } else if (
         requestedGroupId !== null &&
         requestedGroupChat === null
       ) {
@@ -865,6 +990,10 @@ export default function Messages() {
       }
 
       setActiveChatId((currentId) => {
+        if (requestedChatId !== null) {
+          return requestedChat?.id ?? null;
+        }
+
         if (requestedGroupId !== null) {
           return requestedGroupChat?.id ?? null;
         }
@@ -891,6 +1020,7 @@ export default function Messages() {
     }
   }, [
     currentUserId,
+    requestedChatId,
     requestedGroupId,
     user?.role,
   ]);
@@ -923,7 +1053,14 @@ export default function Messages() {
             );
           });
 
-        setChats(availableChats);
+        setChats((currentChats) =>
+          areChatListsEqual(
+            currentChats,
+            availableChats
+          )
+            ? currentChats
+            : availableChats
+        );
 
         setLastMessageByChatId(
           (currentMessages) => {
@@ -941,7 +1078,12 @@ export default function Messages() {
               }
             }
 
-            return nextMessages;
+            return areMessageMapsEqual(
+              currentMessages,
+              nextMessages
+            )
+              ? currentMessages
+              : nextMessages;
           }
         );
 
@@ -956,7 +1098,12 @@ export default function Messages() {
                 getEmbeddedUnreadCount(chat);
             }
 
-            return nextCounts;
+            return areCountMapsEqual(
+              currentCounts,
+              nextCounts
+            )
+              ? currentCounts
+              : nextCounts;
           }
         );
       } catch (refreshError) {
@@ -1088,32 +1235,123 @@ export default function Messages() {
   }, [loadChats]);
 
   useEffect(() => {
-    const groupIds = groupChatIdsKey
+    const groupEntries = groupChatIdsKey
       .split(',')
-      .map(Number)
+      .map((entry) => {
+        const [
+          groupIdValue,
+          creatorIdValue,
+        ] = entry.split(':');
+
+        return {
+          groupId: Number(groupIdValue),
+          creatorId: Number(creatorIdValue),
+        };
+      })
       .filter(
-        (groupId) =>
+        ({ groupId, creatorId }) =>
           Number.isInteger(groupId) &&
-          groupId > 0
+          groupId > 0 &&
+          Number.isInteger(creatorId) &&
+          creatorId > 0
+      );
+
+    const groupIds = groupEntries.map(
+      ({ groupId }) => groupId
+    );
+
+    const fallbackTeacherIdsByGroupId =
+      Object.fromEntries(
+        groupEntries.map(
+          ({ groupId, creatorId }) => [
+            groupId,
+            creatorId,
+          ]
+        )
       );
 
     if (groupIds.length === 0) {
       setGroupDirectoriesById({});
       setLoadingGroupIds(new Set());
+      attemptedGroupDirectoryIdsRef.current =
+        new Set();
       return;
     }
 
     let isCancelled = false;
+    let retryTimerId: number | null = null;
 
-    setLoadingGroupIds(new Set(groupIds));
+    const firstLoadGroupIds = groupIds.filter(
+      (groupId) =>
+        !attemptedGroupDirectoryIdsRef.current.has(
+          groupId
+        )
+    );
 
-    void loadMessageGroupDirectories(groupIds)
+    firstLoadGroupIds.forEach((groupId) => {
+      attemptedGroupDirectoryIdsRef.current.add(
+        groupId
+      );
+    });
+
+    if (firstLoadGroupIds.length > 0) {
+      setLoadingGroupIds(
+        new Set(firstLoadGroupIds)
+      );
+    }
+
+    void loadMessageGroupDirectories(
+      groupIds,
+      fallbackTeacherIdsByGroupId
+    )
       .then((directories) => {
         if (isCancelled) {
           return;
         }
 
-        setGroupDirectoriesById(directories);
+        setGroupDirectoriesById(
+          (currentDirectories) => {
+            const currentSerialized =
+              JSON.stringify(
+                currentDirectories
+              );
+
+            const nextSerialized =
+              JSON.stringify(directories);
+
+            return currentSerialized ===
+              nextSerialized
+              ? currentDirectories
+              : directories;
+          }
+        );
+
+        const hasIncompleteProfiles =
+          Object.keys(directories).length !==
+            groupIds.length ||
+          Object.values(directories).some(
+            (directory) =>
+              !directory.teacher ||
+              directory.teacher.displayName.startsWith(
+                'Преподаватель №'
+              ) ||
+              directory.students.some((student) =>
+                student.displayName.startsWith(
+                  'Студент №'
+                )
+              )
+          );
+
+        if (hasIncompleteProfiles) {
+          retryTimerId = window.setTimeout(
+            () =>
+              setGroupDirectoryReloadToken(
+                (currentToken) =>
+                  currentToken + 1
+              ),
+            15_000
+          );
+        }
       })
       .catch((directoryError) => {
         console.error(
@@ -1123,14 +1361,26 @@ export default function Messages() {
       })
       .finally(() => {
         if (!isCancelled) {
-          setLoadingGroupIds(new Set());
+          setLoadingGroupIds(
+            (currentLoadingGroupIds) =>
+              currentLoadingGroupIds.size === 0
+                ? currentLoadingGroupIds
+                : new Set()
+          );
         }
       });
 
     return () => {
       isCancelled = true;
+
+      if (retryTimerId !== null) {
+        window.clearTimeout(retryTimerId);
+      }
     };
-  }, [groupChatIdsKey]);
+  }, [
+    groupChatIdsKey,
+    groupDirectoryReloadToken,
+  ]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -2055,18 +2305,18 @@ export default function Messages() {
     }
   }
 
-  const handleStudentChatOpen = async (
-    student: MessageDirectoryPerson
+  const handlePersonChatOpen = async (
+    person: MessageDirectoryPerson
   ) => {
     if (
       currentUserId === null ||
-      student.userId === currentUserId ||
-      openingStudentId !== null
+      person.userId === currentUserId ||
+      openingPersonId !== null
     ) {
       return;
     }
 
-    setOpeningStudentId(student.userId);
+    setOpeningPersonId(person.userId);
     setError(null);
 
     try {
@@ -2074,7 +2324,7 @@ export default function Messages() {
         await openOrCreatePrivateChat(
           chats,
           currentUserId,
-          student
+          person
         );
 
       setChats((currentChats) => {
@@ -2093,6 +2343,7 @@ export default function Messages() {
         new URLSearchParams(searchParams);
 
       nextSearchParams.delete('groupId');
+      nextSearchParams.delete('chatId');
       setSearchParams(nextSearchParams, {
         replace: true,
       });
@@ -2106,7 +2357,7 @@ export default function Messages() {
           : 'Не удалось открыть личный чат'
       );
     } finally {
-      setOpeningStudentId(null);
+      setOpeningPersonId(null);
     }
   };
 
@@ -2216,9 +2467,28 @@ export default function Messages() {
                     <div key={chat.id}>
                       <button
                         type="button"
-                        onClick={() =>
-                          setActiveChatId(chat.id)
-                        }
+                        onClick={() => {
+                          const nextSearchParams =
+                            new URLSearchParams(
+                              searchParams
+                            );
+
+                          nextSearchParams.delete(
+                            'groupId'
+                          );
+                          nextSearchParams.delete(
+                            'chatId'
+                          );
+
+                          setSearchParams(
+                            nextSearchParams,
+                            {
+                              replace: true,
+                            }
+                          );
+
+                          setActiveChatId(chat.id);
+                        }}
                         className={`flex w-full gap-3 p-4 text-left transition-colors hover:bg-gray-50 ${
                           isActive
                             ? 'bg-red-50'
@@ -2319,8 +2589,8 @@ export default function Messages() {
                           currentUserId={
                             currentUserId
                           }
-                          openingStudentId={
-                            openingStudentId
+                          openingPersonId={
+                            openingPersonId
                           }
                           onToggle={() =>
                             setExpandedGroupId(
@@ -2333,8 +2603,8 @@ export default function Messages() {
                                   : groupId
                             )
                           }
-                          onStudentClick={
-                            handleStudentChatOpen
+                          onPersonClick={
+                            handlePersonChatOpen
                           }
                         />
                       )}

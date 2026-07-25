@@ -197,6 +197,18 @@ export async function getGroupTeacher(
 }
 
 /**
+ * Получить активный состав группы без профилей пользователей.
+ * Используется как надёжный резервный источник участников.
+ */
+export async function getGroupMembers(
+  groupId: number
+): Promise<GroupMember[]> {
+  return request<GroupMember[]>(
+    `/api/v1/group-members/group/${groupId}`
+  );
+}
+
+/**
  * Получить активных студентов выбранной группы.
  */
 export async function getGroupStudents(

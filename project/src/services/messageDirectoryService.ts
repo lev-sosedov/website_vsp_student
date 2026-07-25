@@ -1,7 +1,10 @@
 import {
   getGroup,
+  getGroupMembers,
   getGroupStudents,
   getGroupTeacher,
+  type AcademicGroup,
+  type GroupMember,
 } from '../api/academicApi';
 
 import {
@@ -12,6 +15,7 @@ import {
 
 import {
   getUserById,
+  getUsersByIds,
   type UserProfile,
 } from '../api/userApi';
 
@@ -73,26 +77,57 @@ function getTeacherName(
 }
 
 export async function loadMessageGroupDirectory(
-  groupId: number
+  groupId: number,
+  fallbackTeacherUserId: number | null = null
 ): Promise<MessageGroupDirectory> {
   const [
-    group,
-    teacherMembership,
-    studentsResponse,
-  ] = await Promise.all([
+    groupResult,
+    membersResult,
+    teacherResult,
+    studentsResult,
+  ] = await Promise.allSettled([
     getGroup(groupId),
+    getGroupMembers(groupId),
     getGroupTeacher(groupId),
     getGroupStudents(groupId),
   ]);
 
+  const group: AcademicGroup | null =
+    groupResult.status === 'fulfilled'
+      ? groupResult.value
+      : null;
+
+  const members: GroupMember[] =
+    membersResult.status === 'fulfilled'
+      ? membersResult.value.filter(
+          (member) =>
+            member.is_active &&
+            member.left_at === null
+        )
+      : [];
+
+  const teacherMembership =
+    teacherResult.status === 'fulfilled'
+      ? teacherResult.value
+      : members.find(
+          (member) =>
+            member.role === 'teacher'
+        ) ?? null;
+
+  const teacherUserId =
+    teacherMembership?.user_id ??
+    group?.teacher_id ??
+    fallbackTeacherUserId ??
+    null;
+
   let teacher: MessageDirectoryPerson | null =
     null;
 
-  if (teacherMembership?.user_id) {
+  if (teacherUserId) {
     try {
       const teacherProfile =
         await getUserById(
-          teacherMembership.user_id
+          teacherUserId
         );
 
       teacher = {
@@ -105,17 +140,19 @@ export async function loadMessageGroupDirectory(
       };
     } catch {
       teacher = {
-        userId: teacherMembership.user_id,
+        userId: teacherUserId,
         displayName:
-          `Преподаватель №${teacherMembership.user_id}`,
+          `Преподаватель №${teacherUserId}`,
         avatarUrl: null,
         role: 'teacher',
       };
     }
   }
 
-  const students =
-    studentsResponse.items
+  let students: MessageDirectoryPerson[] = [];
+
+  if (studentsResult.status === 'fulfilled') {
+    students = studentsResult.value.items
       .filter((student) => student.is_active)
       .map(
         (
@@ -127,26 +164,78 @@ export async function loadMessageGroupDirectory(
           avatarUrl: student.avatar_url,
           role: 'student',
         })
-      )
-      .sort((first, second) =>
-        first.displayName.localeCompare(
-          second.displayName,
-          'ru'
-        )
       );
+  } else {
+    const studentMemberships = members.filter(
+      (member) =>
+        member.role === 'student'
+    );
+
+    const profiles = await getUsersByIds(
+      studentMemberships.map(
+        (member) => member.user_id
+      )
+    );
+
+    students = studentMemberships.map(
+      (
+        member
+      ): MessageDirectoryPerson => {
+        const profile =
+          profiles[member.user_id];
+
+        return {
+          userId: member.user_id,
+          displayName: profile
+            ? joinName(
+                [
+                  profile.first_name,
+                  profile.user_name,
+                ],
+                `Студент №${member.user_id}`
+              )
+            : `Студент №${member.user_id}`,
+          avatarUrl:
+            profile?.avatar_url ?? null,
+          role: 'student',
+        };
+      }
+    );
+  }
+
+  students.sort((first, second) =>
+    first.displayName.localeCompare(
+      second.displayName,
+      'ru'
+    )
+  );
+
+  if (
+    !group &&
+    members.length === 0 &&
+    students.length === 0
+  ) {
+    throw new Error(
+      `Не удалось загрузить группу №${groupId}`
+    );
+  }
 
   return {
     groupId,
     groupName:
-      group.name?.trim() ||
-      `Группа №${group.id}`,
+      group?.name?.trim() ||
+      `Группа №${groupId}`,
     teacher,
     students,
   };
 }
 
 export async function loadMessageGroupDirectories(
-  groupIds: number[]
+  groupIds: number[],
+  fallbackTeacherIdsByGroupId: Record<
+    number,
+    number
+  > = {}
 ): Promise<Record<number, MessageGroupDirectory>> {
   const uniqueGroupIds = [
     ...new Set(
@@ -160,7 +249,12 @@ export async function loadMessageGroupDirectories(
 
   const results = await Promise.allSettled(
     uniqueGroupIds.map((groupId) =>
-      loadMessageGroupDirectory(groupId)
+      loadMessageGroupDirectory(
+        groupId,
+        fallbackTeacherIdsByGroupId[
+          groupId
+        ] ?? null
+      )
     )
   );
 
@@ -255,7 +349,10 @@ export async function openOrCreatePrivateChat(
     chat_type: 'private',
     title:
       `${currentUserName} — ${target.displayName}`,
-    description: 'Личный чат студентов',
+    description:
+      target.role === 'teacher'
+        ? 'Личный чат с преподавателем'
+        : 'Личный чат студентов',
     created_by: currentUserId,
   });
 

@@ -14,10 +14,10 @@ interface GroupChatMembersProps {
   isExpanded: boolean;
   isLoading: boolean;
   currentUserId: number | null;
-  openingStudentId: number | null;
+  openingPersonId: number | null;
   onToggle: () => void;
-  onStudentClick: (
-    student: MessageDirectoryPerson
+  onPersonClick: (
+    person: MessageDirectoryPerson
   ) => void;
 }
 
@@ -56,9 +56,9 @@ export default function GroupChatMembers({
   isExpanded,
   isLoading,
   currentUserId,
-  openingStudentId,
+  openingPersonId,
   onToggle,
-  onStudentClick,
+  onPersonClick,
 }: GroupChatMembersProps) {
   const studentsCount =
     directory?.students.length ?? 0;
@@ -97,12 +97,26 @@ export default function GroupChatMembers({
           ) : (
             <>
               {directory.teacher && (
-                <div className="flex items-center gap-2 rounded-lg bg-white px-2 py-2">
+                <button
+                  type="button"
+                  disabled={
+                    directory.teacher.userId ===
+                      currentUserId ||
+                    openingPersonId ===
+                      directory.teacher.userId
+                  }
+                  onClick={() =>
+                    onPersonClick(
+                      directory.teacher!
+                    )
+                  }
+                  className="flex w-full items-center gap-2 rounded-lg bg-white px-2 py-2 text-left transition hover:bg-red-50 disabled:cursor-default disabled:opacity-60"
+                >
                   <PersonAvatar
                     person={directory.teacher}
                   />
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-gray-800">
                       {
                         directory.teacher
@@ -111,10 +125,20 @@ export default function GroupChatMembers({
                     </p>
 
                     <p className="text-[10px] font-medium text-red-600">
-                      Преподаватель
+                      {openingPersonId ===
+                      directory.teacher.userId
+                        ? 'Открываем чат…'
+                        : 'Преподаватель · нажмите, чтобы написать'}
                     </p>
                   </div>
-                </div>
+
+                  {openingPersonId ===
+                  directory.teacher.userId ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                  ) : (
+                    <UserRound className="h-4 w-4 text-red-300" />
+                  )}
+                </button>
               )}
 
               {directory.students.map(
@@ -124,7 +148,7 @@ export default function GroupChatMembers({
                     currentUserId;
 
                   const isOpening =
-                    openingStudentId ===
+                    openingPersonId ===
                     student.userId;
 
                   return (
@@ -136,7 +160,7 @@ export default function GroupChatMembers({
                         isOpening
                       }
                       onClick={() =>
-                        onStudentClick(student)
+                        onPersonClick(student)
                       }
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-white disabled:cursor-default disabled:opacity-60"
                     >

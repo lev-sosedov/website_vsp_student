@@ -20,6 +20,11 @@ import {
   getUserUnreadCount,
 } from '../../api/chatApi';
 
+import {
+  getNotificationUnreadCount,
+  NOTIFICATIONS_UPDATED_EVENT,
+} from '../../api/notificationApi';
+
 import { useAuth } from '../../context/AuthContext';
 
 export interface NavItem {
@@ -183,6 +188,11 @@ export default function DashboardLayout({
     setTotalUnreadMessages,
   ] = useState(0);
 
+  const [
+    totalUnreadNotifications,
+    setTotalUnreadNotifications,
+  ] = useState(0);
+
   const displayName = useMemo(
     () =>
       getDisplayName(
@@ -218,6 +228,7 @@ export default function DashboardLayout({
   useEffect(() => {
     if (user?.id == null) {
       setTotalUnreadMessages(0);
+      setTotalUnreadNotifications(0);
       return;
     }
 
@@ -225,40 +236,84 @@ export default function DashboardLayout({
 
     let isMounted = true;
 
-    async function loadUnreadMessages(): Promise<void> {
-      try {
-        const response =
-          await getUserUnreadCount(userId);
+    async function loadUnreadCounts(): Promise<void> {
+      const [
+        messagesResult,
+        notificationsResult,
+      ] = await Promise.allSettled([
+        getUserUnreadCount(userId),
+        getNotificationUnreadCount(userId),
+      ]);
 
-        if (isMounted) {
-          setTotalUnreadMessages(
-            Math.max(0, response.unread_count)
-          );
-        }
-      } catch (requestError) {
+      if (!isMounted) {
+        return;
+      }
+
+      if (messagesResult.status === 'fulfilled') {
+        const nextCount = Math.max(
+          0,
+          messagesResult.value.unread_count
+        );
+
+        setTotalUnreadMessages((currentCount) =>
+          currentCount === nextCount
+            ? currentCount
+            : nextCount
+        );
+      } else {
         console.error(
           'Не удалось получить общий счётчик непрочитанных сообщений:',
-          requestError
+          messagesResult.reason
+        );
+      }
+
+      if (
+        notificationsResult.status ===
+        'fulfilled'
+      ) {
+        const nextCount = Math.max(
+          0,
+          notificationsResult.value.unread_count
+        );
+
+        setTotalUnreadNotifications(
+          (currentCount) =>
+            currentCount === nextCount
+              ? currentCount
+              : nextCount
+        );
+      } else {
+        console.error(
+          'Не удалось получить счётчик непрочитанных уведомлений:',
+          notificationsResult.reason
         );
       }
     }
 
-    void loadUnreadMessages();
+    void loadUnreadCounts();
 
     const intervalId = window.setInterval(() => {
-      void loadUnreadMessages();
-    }, 5000);
+      if (
+        document.visibilityState === 'visible'
+      ) {
+        void loadUnreadCounts();
+      }
+    }, 15000);
 
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === 'visible'
       ) {
-        void loadUnreadMessages();
+        void loadUnreadCounts();
       }
     };
 
     const handleWindowFocus = () => {
-      void loadUnreadMessages();
+      void loadUnreadCounts();
+    };
+
+    const handleNotificationsUpdated = () => {
+      void loadUnreadCounts();
     };
 
     document.addEventListener(
@@ -269,6 +324,11 @@ export default function DashboardLayout({
     window.addEventListener(
       'focus',
       handleWindowFocus
+    );
+
+    window.addEventListener(
+      NOTIFICATIONS_UPDATED_EVENT,
+      handleNotificationsUpdated
     );
 
     return () => {
@@ -284,6 +344,11 @@ export default function DashboardLayout({
       window.removeEventListener(
         'focus',
         handleWindowFocus
+      );
+
+      window.removeEventListener(
+        NOTIFICATIONS_UPDATED_EVENT,
+        handleNotificationsUpdated
       );
     };
   }, [user?.id]);
@@ -359,6 +424,20 @@ export default function DashboardLayout({
             const isMessagesItem =
               item.to === '/dashboard/messages';
 
+            const isNotificationsItem =
+              item.to ===
+              '/dashboard/notifications';
+
+            const unreadCount = isMessagesItem
+              ? totalUnreadMessages
+              : isNotificationsItem
+                ? totalUnreadNotifications
+                : 0;
+
+            const unreadLabel = isMessagesItem
+              ? 'непрочитанных сообщений'
+              : 'непрочитанных уведомлений';
+
             return (
               <NavLink
                 key={item.to}
@@ -377,15 +456,14 @@ export default function DashboardLayout({
                   {item.label}
                 </span>
 
-                {isMessagesItem &&
-                  totalUnreadMessages > 0 && (
+                {unreadCount > 0 && (
                     <span
                       className="ml-auto inline-flex min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                      title={`${totalUnreadMessages} непрочитанных сообщений`}
-                      aria-label={`${totalUnreadMessages} непрочитанных сообщений`}
+                      title={`${unreadCount} ${unreadLabel}`}
+                      aria-label={`${unreadCount} ${unreadLabel}`}
                     >
                       {formatUnreadCount(
-                        totalUnreadMessages
+                        unreadCount
                       )}
                     </span>
                   )}
