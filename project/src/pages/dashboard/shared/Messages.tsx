@@ -22,6 +22,10 @@ import {
 } from 'react';
 
 import {
+  useSearchParams,
+} from 'react-router-dom';
+
+import {
   deleteChatMessage,
   getChatMessages,
   getChats,
@@ -395,8 +399,20 @@ type MessageContextMenuState = {
 
 export default function Messages() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const currentUserId = user?.id ?? null;
+
+  const requestedGroupId = useMemo(() => {
+    const groupId = Number(
+      searchParams.get('groupId')
+    );
+
+    return Number.isInteger(groupId) &&
+      groupId > 0
+      ? groupId
+      : null;
+  }, [searchParams]);
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
@@ -735,7 +751,29 @@ export default function Messages() {
         return nextCounts;
       });
 
+      const requestedGroupChat =
+        requestedGroupId === null
+          ? null
+          : availableChats.find(
+              (chat) =>
+                chat.chat_type === 'group' &&
+                chat.group_id === requestedGroupId
+            ) ?? null;
+
+      if (
+        requestedGroupId !== null &&
+        requestedGroupChat === null
+      ) {
+        setError(
+          `Чат группы №${requestedGroupId} пока не создан или вы не добавлены в него.`
+        );
+      }
+
       setActiveChatId((currentId) => {
+        if (requestedGroupId !== null) {
+          return requestedGroupChat?.id ?? null;
+        }
+
         const currentChatStillExists =
           availableChats.some(
             (chat) => chat.id === currentId
@@ -756,7 +794,10 @@ export default function Messages() {
     } finally {
       setIsChatsLoading(false);
     }
-  }, [currentUserId]);
+  }, [
+    currentUserId,
+    requestedGroupId,
+  ]);
 
   const refreshChatsSilently =
     useCallback(async () => {

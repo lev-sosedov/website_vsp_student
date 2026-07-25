@@ -20,7 +20,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   getActiveUserGroups,
   getGroup,
-  getPrimaryStudentGroupMembership,
+  getStudentGroupMemberships,
   type AcademicGroup,
 } from '../../../api/academicApi';
 import {
@@ -46,7 +46,7 @@ interface DisplayLesson extends LessonSchedule {
   groupName: string;
 }
 
-interface TeacherGroupOption {
+interface ScheduleGroupOption {
   membershipId: number;
   group: AcademicGroup;
 }
@@ -87,6 +87,7 @@ const MONTH_NAMES = [
 
 function getAccessToken(): string | null {
   return (
+    localStorage.getItem('vshp_access_token') ??
     localStorage.getItem('access_token') ??
     localStorage.getItem('accessToken')
   );
@@ -283,7 +284,12 @@ export default function Schedule() {
   const [
     teacherGroups,
     setTeacherGroups,
-  ] = useState<TeacherGroupOption[]>([]);
+  ] = useState<ScheduleGroupOption[]>([]);
+
+  const [
+    studentGroups,
+    setStudentGroups,
+  ] = useState<ScheduleGroupOption[]>([]);
 
   const [
     selectedGroupId,
@@ -293,7 +299,12 @@ export default function Schedule() {
   const [
     groupsLoading,
     setGroupsLoading,
-  ] = useState(false);
+  ] = useState(true);
+
+  const [
+    studentGroupsLoading,
+    setStudentGroupsLoading,
+  ] = useState(true);
 
   const [lessons, setLessons] = useState<
     DisplayLesson[]
@@ -338,7 +349,6 @@ export default function Schedule() {
   useEffect(() => {
     if (!isTeacher) {
       setTeacherGroups([]);
-      setSelectedGroupId(null);
       return;
     }
 
@@ -349,6 +359,7 @@ export default function Schedule() {
       teacherId <= 0
     ) {
       setTeacherGroups([]);
+      setGroupsLoading(false);
       setError(
         'Не удалось определить ID преподавателя'
       );
@@ -448,6 +459,113 @@ export default function Schedule() {
     requestedGroupId,
   ]);
 
+  useEffect(() => {
+    if (isTeacher) {
+      setStudentGroups([]);
+      return;
+    }
+
+    const studentId = Number(user?.id);
+
+    if (
+      !Number.isInteger(studentId) ||
+      studentId <= 0
+    ) {
+      setStudentGroups([]);
+      setSelectedGroupId(null);
+      setStudentGroupsLoading(false);
+      setError(
+        'Не удалось определить ID студента'
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadStudentGroups() {
+      try {
+        setStudentGroupsLoading(true);
+        setError(null);
+
+        const memberships =
+          await getStudentGroupMemberships(
+            studentId
+          );
+
+        const uniqueMemberships = Array.from(
+          new Map(
+            memberships.map((membership) => [
+              membership.group_id,
+              membership,
+            ])
+          ).values()
+        );
+
+        const groupResults = await Promise.all(
+          uniqueMemberships.map(
+            async (membership) => ({
+              membershipId: membership.id,
+              group: await getGroup(
+                membership.group_id
+              ),
+            })
+          )
+        );
+
+        groupResults.sort((first, second) =>
+          first.group.name.localeCompare(
+            second.group.name,
+            'ru'
+          )
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setStudentGroups(groupResults);
+
+        const requestedGroupExists =
+          Number.isInteger(requestedGroupId) &&
+          requestedGroupId > 0 &&
+          groupResults.some(
+            (item) =>
+              item.group.id === requestedGroupId
+          );
+
+        setSelectedGroupId(
+          requestedGroupExists
+            ? requestedGroupId
+            : null
+        );
+      } catch (loadError) {
+        if (!cancelled) {
+          setStudentGroups([]);
+          setSelectedGroupId(null);
+          setError(
+            `Не удалось загрузить группы студента: ${getErrorMessage(
+              loadError
+            )}`
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStudentGroupsLoading(false);
+        }
+      }
+    }
+
+    void loadStudentGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isTeacher,
+    user?.id,
+    requestedGroupId,
+  ]);
+
   const loadSchedule = async () => {
     if (!user?.id) {
       setLessons([]);
@@ -458,7 +576,10 @@ export default function Schedule() {
       return;
     }
 
-    if (isTeacher && groupsLoading) {
+    if (
+      (isTeacher && groupsLoading) ||
+      (!isTeacher && studentGroupsLoading)
+    ) {
       return;
     }
 
@@ -513,34 +634,41 @@ export default function Schedule() {
 
         weekLessons = lessonResponses.flat();
       } else {
-        const membership =
-          await getPrimaryStudentGroupMembership(
-            Number(user.id)
-          );
-
-        if (!membership?.group_id) {
+        if (studentGroups.length === 0) {
           setLessons([]);
           setError(
-            'Пользователь пока не добавлен в учебную группу'
+            'Студент пока не добавлен ни в одну активную группу'
           );
           return;
         }
 
-        const studentGroup = await getGroup(
-          membership.group_id
-        );
-
-        groupNames.set(
-          studentGroup.id,
-          studentGroup.name
-        );
-
-        weekLessons =
-          await getGroupLessonsByDateRange(
-            membership.group_id,
-            dateFrom,
-            dateTo
+        studentGroups.forEach((item) => {
+          groupNames.set(
+            item.group.id,
+            item.group.name
           );
+        });
+
+        const groupsToLoad =
+          selectedGroupId === null
+            ? studentGroups
+            : studentGroups.filter(
+                (item) =>
+                  item.group.id === selectedGroupId
+              );
+
+        const lessonResponses =
+          await Promise.all(
+            groupsToLoad.map((item) =>
+              getGroupLessonsByDateRange(
+                item.group.id,
+                dateFrom,
+                dateTo
+              )
+            )
+          );
+
+        weekLessons = lessonResponses.flat();
       }
 
       const teacherIds = Array.from(
@@ -659,7 +787,9 @@ export default function Schedule() {
     selectedWeekStart,
     selectedGroupId,
     teacherGroups,
+    studentGroups,
     groupsLoading,
+    studentGroupsLoading,
     isTeacher,
   ]);
 
@@ -711,6 +841,23 @@ export default function Schedule() {
       startOfWeek(new Date())
     );
   };
+
+  const groupOptions = isTeacher
+    ? teacherGroups
+    : studentGroups;
+
+  const groupOptionsLoading = isTeacher
+    ? groupsLoading
+    : studentGroupsLoading;
+
+  const showGroupSelector = isTeacher
+    ? groupOptions.length > 0
+    : groupOptions.length > 1;
+
+  const showLessonGroupName =
+    isTeacher ||
+    (studentGroups.length > 1 &&
+      selectedGroupId === null);
 
   return (
     <div className="space-y-6">
@@ -766,7 +913,7 @@ export default function Schedule() {
         </div>
       </div>
 
-      {isTeacher && (
+      {showGroupSelector && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <label className="block max-w-md space-y-2">
             <span className="text-sm font-medium text-gray-700">
@@ -803,8 +950,8 @@ export default function Schedule() {
                 setSearchParams(nextSearchParams);
               }}
               disabled={
-                groupsLoading ||
-                teacherGroups.length === 0
+                groupOptionsLoading ||
+                groupOptions.length === 0
               }
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-50 disabled:text-gray-400"
             >
@@ -812,7 +959,7 @@ export default function Schedule() {
                 Все группы
               </option>
 
-              {teacherGroups.map((item) => (
+              {groupOptions.map((item) => (
                 <option
                   key={item.group.id}
                   value={item.group.id}
@@ -977,7 +1124,7 @@ export default function Schedule() {
                                   )}
                                 </span>
 
-                                {isTeacher && (
+                                {showLessonGroupName && (
                                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                                     {lesson.groupName}
                                   </span>

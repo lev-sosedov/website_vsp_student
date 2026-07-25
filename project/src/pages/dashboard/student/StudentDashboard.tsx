@@ -10,15 +10,18 @@ import {
   CheckCircle2,
   Circle,
   Clock,
-  FileText,
-  GraduationCap,
   MessageSquare,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 
-import ProgressBar from '../../../components/dashboard/ProgressBar';
 import StatCard from '../../../components/dashboard/StatCard';
 import { useAuth } from '../../../context/AuthContext';
+
+import {
+  getGroup,
+  getGroupStudents,
+} from '../../../api/academicApi';
 
 import {
   loadStudentDashboard,
@@ -29,10 +32,13 @@ import {
 import {
   homework,
   notifications,
-  progressData,
-  upcomingEvents,
-  weeklyActivity,
 } from '../../../data/dashboardData';
+
+interface StudentGroupCard
+  extends StudentDashboardGroup {
+  branchId: number | null;
+  studentsCount: number | null;
+}
 
 function getGreetingName(
   firstName: string | null | undefined,
@@ -73,7 +79,7 @@ export default function StudentDashboard() {
   >([]);
 
   const [groups, setGroups] = useState<
-    StudentDashboardGroup[]
+    StudentGroupCard[]
   >([]);
 
   const [selectedGroupId, setSelectedGroupId] =
@@ -110,13 +116,66 @@ export default function StudentDashboard() {
         const dashboardData =
           await loadStudentDashboard(user.id);
 
+        const enrichedGroups = await Promise.all(
+          dashboardData.groups.map(
+            async (
+              group
+            ): Promise<StudentGroupCard> => {
+              const [
+                groupDetailsResult,
+                studentsResult,
+              ] = await Promise.allSettled([
+                getGroup(group.id),
+                getGroupStudents(group.id),
+              ]);
+
+              if (
+                groupDetailsResult.status ===
+                'rejected'
+              ) {
+                console.error(
+                  `Не удалось получить данные группы ${group.id}:`,
+                  groupDetailsResult.reason
+                );
+              }
+
+              if (
+                studentsResult.status ===
+                'rejected'
+              ) {
+                console.error(
+                  `Не удалось получить студентов группы ${group.id}:`,
+                  studentsResult.reason
+                );
+              }
+
+              return {
+                ...group,
+
+                branchId:
+                  groupDetailsResult.status ===
+                  'fulfilled'
+                    ? groupDetailsResult.value
+                        .branch_id ?? null
+                    : null,
+
+                studentsCount:
+                  studentsResult.status ===
+                  'fulfilled'
+                    ? studentsResult.value.total
+                    : null,
+              };
+            }
+          )
+        );
+
         if (isMounted) {
           setTodayLessons(
             dashboardData.todayLessons
           );
 
           setGroups(
-            dashboardData.groups
+            enrichedGroups
           );
 
           setSelectedGroupId('all');
@@ -152,13 +211,6 @@ export default function StudentDashboard() {
     };
   }, [user?.id]);
 
-  const maxActivity = Math.max(
-    ...weeklyActivity.map(
-      (item) => item.value
-    ),
-    1
-  );
-
   const greetingName = getGreetingName(
     user?.first_name,
     user?.last_name,
@@ -189,16 +241,13 @@ export default function StudentDashboard() {
         <h1 className="text-2xl font-bold text-gray-900">
           Здравствуйте, {greetingName}!
         </h1>
-
         <p className="mt-1 text-gray-500">
           Вот что у вас сегодня на повестке.
         </p>
-
-
       </div>
 
       {/* Пока данные карточек тестовые */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
           label="Средний балл"
           value="85%"
@@ -216,111 +265,164 @@ export default function StudentDashboard() {
         />
 
         <StatCard
-          label="Активные задания"
+          label="Домашние задания"
           value="3"
           icon={BookOpen}
           color="amber"
         />
-
-        <StatCard
-          label="Завершено курсов"
-          value="2"
-          icon={Award}
-          color="purple"
-        />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Пока тестовые события */}
-          <div className="card p-6 lg:col-span-2">
-            <h2 className="mb-5 text-lg font-bold text-gray-900">
+        {/* Реальные группы студента */}
+        <div className="card min-h-[270px] p-6 lg:col-span-2">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">
               Мои группы
             </h2>
 
             <Link
               to="/dashboard/schedule"
-              className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700"
+              className="inline-flex items-center gap-1 text-sm text-red-600 transition hover:text-red-700"
             >
-              Все группы
+              Все
 
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
+          </div>
 
-            <div className="space-y-4">
-              {upcomingEvents.map((event) => (
+          {lessonsLoading && (
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-8 text-center">
+              <Clock className="mx-auto mb-2 h-7 w-7 text-gray-300" />
+
+              <p className="text-sm text-gray-500">
+                Загружаем ваши группы...
+              </p>
+            </div>
+          )}
+
+          {!lessonsLoading &&
+            lessonsError &&
+            groups.length === 0 && (
+              <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
+                <p className="text-sm text-red-600">
+                  {lessonsError}
+                </p>
+              </div>
+            )}
+
+          {!lessonsLoading &&
+            !lessonsError &&
+            groups.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+                <Users className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+
+                <p className="text-sm font-medium text-gray-700">
+                  Учебные группы не найдены
+                </p>
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Вы пока не добавлены ни в одну
+                  активную группу.
+                </p>
+              </div>
+            )}
+
+          {!lessonsLoading &&
+            groups.length > 0 && (
+              <div className="space-y-3">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    className="flex flex-col gap-4 rounded-xl border border-gray-100 p-4 transition hover:border-gray-200 hover:bg-gray-50 sm:flex-row sm:items-center"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                        <Users className="h-5 w-5 text-red-600" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {group.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-400">
+                          Филиал:{' '}
+                          {group.branchId ?? 'не указан'}
+                          {' · '}
+                          Студентов:{' '}
+                          {group.studentsCount ?? '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <Link
+                        to="/dashboard/messages"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs font-medium text-red-600 transition hover:border-red-300 hover:bg-red-100"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Сообщения
+                      </Link>
+
+                      <Link
+                        to={`/dashboard/schedule?groupId=${group.id}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                      >
+                        <Calendar className="h-4 w-4" />
+                        Расписание
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+
+
+        {/* Пока тестовые уведомления */}
+        <div className="card p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">
+              Уведомления
+            </h2>
+
+            <Link
+              to="/dashboard/notifications"
+              className="text-sm text-red-600 hover:text-red-700"
+            >
+              Все
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            {notifications
+              .slice(0, 4)
+              .map((notification) => (
                 <div
-                  key={event.id}
+                  key={notification.id}
                   className="flex gap-3"
                 >
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gray-50">
-                    <Calendar className="h-5 w-5 text-gray-400" />
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-50">
+                    <Bell className="h-4 w-4 text-red-600" />
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">
-                      {event.title}
+                      {notification.title}
                     </p>
 
-                    <p className="text-xs text-gray-500">
-                      {event.date}
-                      {' · '}
-                      {event.time}
+                    <p className="line-clamp-1 text-xs text-gray-500">
+                      {notification.text}
                     </p>
 
-                    <p className="text-xs text-gray-400">
-                      {event.location}
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {notification.time}
                     </p>
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-        
-          {/* Пока тестовые уведомления */}
-          <div className="card p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">
-                Уведомления
-              </h2>
-
-              <Link
-                to="/dashboard/notifications"
-                className="text-sm text-red-600 hover:text-red-700"
-              >
-                Все
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              {notifications
-                .slice(0, 4)
-                .map((notification) => (
-                  <div
-                    key={notification.id}
-                    className="flex gap-3"
-                  >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-50">
-                      <Bell className="h-4 w-4 text-red-600" />
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {notification.title}
-                      </p>
-
-                      <p className="line-clamp-1 text-xs text-gray-500">
-                        {notification.text}
-                      </p>
-
-                      <p className="mt-0.5 text-xs text-gray-400">
-                        {notification.time}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-            </div>
           </div>
         </div>
+      </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Сегодняшние занятия — реальные данные */}
         <div className="card p-6 lg:col-span-2">
