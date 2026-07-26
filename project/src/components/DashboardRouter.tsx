@@ -44,6 +44,7 @@ import AdminStudents from '../pages/dashboard/admin/AdminStudents';
 import AdminTeachers from '../pages/dashboard/admin/AdminTeachers';
 import AdminGroups from '../pages/dashboard/admin/AdminGroups';
 import AdminBranches from '../pages/dashboard/admin/AdminBranches';
+import AdminEducationPrograms from '../pages/dashboard/admin/AdminEducationPrograms';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -235,6 +236,11 @@ const adminNav: NavItem[] = [
     to: '/dashboard/branches',
     label: 'Филиалы',
     icon: Building2,
+  },
+  {
+    to: '/dashboard/programs',
+    label: 'Учебные программы',
+    icon: BookOpen,
   },
   {
     to: '/dashboard/progress',
@@ -459,6 +465,15 @@ export default function DashboardRouter() {
           element={
             currentRole === 'admin'
               ? <AdminBranches />
+              : <Progress />
+          }
+        />
+
+        <Route
+          path="programs"
+          element={
+            currentRole === 'admin'
+              ? <AdminEducationPrograms />
               : <Progress />
           }
         />

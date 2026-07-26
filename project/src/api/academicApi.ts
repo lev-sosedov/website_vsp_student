@@ -66,7 +66,13 @@ export interface AcademicDirection {
   is_active?: boolean;
 
   created_at?: string;
+  closed_at?: string | null;
   updated_at?: string;
+}
+
+export interface AcademicDirectionMutation {
+  name: string;
+  description: string | null;
 }
 
 export interface AcademicBranch {
@@ -115,13 +121,49 @@ export interface AcademicBranchAddressMutation {
 
 export interface AcademicEducationPlan {
   id: number;
-  direction_id?: number | null;
-  name?: string | null;
+  direction_id: number;
+  name: string;
   title?: string | null;
   description?: string | null;
-  duration_months?: number | null;
-  lessons_per_week?: number | null;
+  duration_months: number;
+  lessons_per_week: number;
   is_active?: boolean;
+  created_at?: string;
+  closed_at?: string | null;
+}
+
+export interface AcademicEducationPlanMutation {
+  direction_id: number;
+  name: string;
+  duration_months: number;
+  lessons_per_week: number;
+}
+
+export interface AcademicModule {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+  closed_at?: string | null;
+}
+
+export interface AcademicModuleMutation {
+  name: string;
+  description: string | null;
+}
+
+export interface AcademicEducationPlanModule {
+  id: number;
+  education_plan_id: number;
+  module_id: number;
+  order_number: number;
+}
+
+export interface AcademicEducationPlanModuleMutation {
+  education_plan_id: number;
+  module_id: number;
+  order_number: number;
 }
 
 export interface AcademicGroupMutation {
@@ -473,6 +515,46 @@ export async function getDirections(): Promise<
     : response.items ?? [];
 }
 
+export async function createDirection(
+  data: AcademicDirectionMutation
+): Promise<AcademicDirection> {
+  return request<AcademicDirection>(
+    '/api/v1/directions',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateDirection(
+  directionId: number,
+  data: Partial<
+    AcademicDirectionMutation & {
+      is_active: boolean;
+    }
+  >
+): Promise<AcademicDirection> {
+  return request<AcademicDirection>(
+    `/api/v1/directions/${directionId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteDirection(
+  directionId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/directions/${directionId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
 /**
  * Получить филиал по ID.
  */
@@ -663,4 +745,192 @@ export async function getEducationPlans(): Promise<
   return Array.isArray(response)
     ? response
     : response.items ?? [];
+}
+
+export async function createEducationPlan(
+  data: AcademicEducationPlanMutation
+): Promise<AcademicEducationPlan> {
+  return request<AcademicEducationPlan>(
+    '/api/v1/education-plans',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateEducationPlan(
+  planId: number,
+  data: Partial<
+    AcademicEducationPlanMutation & {
+      is_active: boolean;
+    }
+  >
+): Promise<AcademicEducationPlan> {
+  return request<AcademicEducationPlan>(
+    `/api/v1/education-plans/${planId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteEducationPlan(
+  planId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/education-plans/${planId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function getModules(): Promise<
+  AcademicModule[]
+> {
+  const modules: AcademicModule[] = [];
+  const pageSize = 100;
+
+  for (
+    let offset = 0;
+    offset < 10_000;
+    offset += pageSize
+  ) {
+    const response = await request<
+      AcademicModule[] |
+      AcademicListResponse<AcademicModule>
+    >(
+      `/api/v1/modules?limit=${pageSize}&offset=${offset}`
+    );
+
+    const items = Array.isArray(response)
+      ? response
+      : response.items ?? [];
+
+    modules.push(...items);
+
+    const total = Array.isArray(response)
+      ? undefined
+      : response.total;
+
+    if (
+      items.length < pageSize ||
+      (typeof total === 'number' &&
+        modules.length >= total)
+    ) {
+      break;
+    }
+  }
+
+  return modules;
+}
+
+export async function createModule(
+  data: AcademicModuleMutation
+): Promise<AcademicModule> {
+  return request<AcademicModule>(
+    '/api/v1/modules',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateModule(
+  moduleId: number,
+  data: Partial<
+    AcademicModuleMutation & {
+      is_active: boolean;
+    }
+  >
+): Promise<AcademicModule> {
+  return request<AcademicModule>(
+    `/api/v1/modules/${moduleId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteModule(
+  moduleId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/modules/${moduleId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function getEducationPlanModules(
+  planId: number
+): Promise<AcademicEducationPlanModule[]> {
+  return request<
+    AcademicEducationPlanModule[]
+  >(
+    `/api/v1/education-plan-modules/plan/${planId}`
+  );
+}
+
+export async function addEducationPlanModule(
+  data: AcademicEducationPlanModuleMutation
+): Promise<AcademicEducationPlanModule> {
+  return request<AcademicEducationPlanModule>(
+    '/api/v1/education-plan-modules',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function removeEducationPlanModule(
+  planId: number,
+  moduleId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/education-plan-modules/plan/${planId}/module/${moduleId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function clearEducationPlanModules(
+  planId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/education-plan-modules/plan/${planId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function reorderEducationPlanModules(
+  planId: number,
+  moduleIds: number[]
+): Promise<AcademicEducationPlanModule[]> {
+  return request<
+    AcademicEducationPlanModule[]
+  >(
+    `/api/v1/education-plan-modules/plan/${planId}/reorder`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        education_plan_id: planId,
+        modules: moduleIds.map(
+          (moduleId, index) => ({
+            module_id: moduleId,
+            order_number: index + 1,
+          })
+        ),
+      }),
+    }
+  );
 }
