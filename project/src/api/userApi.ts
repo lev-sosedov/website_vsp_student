@@ -33,6 +33,7 @@ export interface UserListFilters {
 }
 
 export interface UserProfileUpdate {
+  phone_number?: string;
   email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -40,6 +41,18 @@ export interface UserProfileUpdate {
   avatar_url?: string | null;
   about?: string | null;
   user_name?: string | null;
+}
+
+export interface CreateUserRequest {
+  phone_number: string;
+  user_name: string;
+  role: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  birthday?: string | null;
+  avatar_url?: string | null;
+  about?: string | null;
 }
 
 const userProfileCache =
@@ -77,6 +90,57 @@ async function getUserApiError(
 
     return responseText || fallbackMessage;
   }
+}
+
+async function userRequest<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const accessToken = getAccessToken();
+  const headers = new Headers(options.headers);
+
+  headers.set('Accept', 'application/json');
+
+  if (options.body) {
+    headers.set(
+      'Content-Type',
+      'application/json'
+    );
+  }
+
+  if (accessToken) {
+    headers.set(
+      'Authorization',
+      `Bearer ${accessToken}`
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}${path}`,
+    {
+      ...options,
+      headers,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getUserApiError(
+        response,
+        `Ошибка User Service: ${response.status}`
+      )
+    );
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+
+  return text
+    ? JSON.parse(text) as T
+    : undefined as T;
 }
 
 async function requestUserProfile(
@@ -358,4 +422,110 @@ export async function updateUserProfile(
   pendingUserRequests.delete(userId);
 
   return updatedUser;
+}
+
+export async function createUser(
+  data: CreateUserRequest
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    '/api/v1/users/',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+
+  userProfileCache.set(user.id, user);
+
+  return user;
+}
+
+export async function deleteUser(
+  userId: number
+): Promise<void> {
+  await userRequest<void>(
+    `/api/v1/users/${userId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+
+  clearUserProfileCache(userId);
+}
+
+export async function changeUserRole(
+  userId: number,
+  role: string
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    `/api/v1/users/${userId}/role`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }
+  );
+
+  clearUserProfileCache(userId);
+
+  return user;
+}
+
+export async function blockUser(
+  userId: number
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    `/api/v1/users/${userId}/block`,
+    {
+      method: 'PATCH',
+    }
+  );
+
+  clearUserProfileCache(userId);
+
+  return user;
+}
+
+export async function activateUser(
+  userId: number
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    `/api/v1/users/${userId}/activate`,
+    {
+      method: 'PATCH',
+    }
+  );
+
+  clearUserProfileCache(userId);
+
+  return user;
+}
+
+export async function verifyUserAccount(
+  userId: number
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    `/api/v1/users/${userId}/verify-account`,
+    {
+      method: 'PATCH',
+    }
+  );
+
+  clearUserProfileCache(userId);
+
+  return user;
+}
+
+export async function verifyUserPhone(
+  userId: number
+): Promise<UserProfile> {
+  const user = await userRequest<UserProfile>(
+    `/api/v1/users/${userId}/verify-phone`,
+    {
+      method: 'PATCH',
+    }
+  );
+
+  clearUserProfileCache(userId);
+
+  return user;
 }

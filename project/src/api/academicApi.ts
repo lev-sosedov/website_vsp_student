@@ -68,6 +68,43 @@ export interface AcademicDirection {
   updated_at?: string;
 }
 
+export interface AcademicBranch {
+  id: number;
+  name?: string | null;
+  title?: string | null;
+  short_name?: string | null;
+  address?: string | null;
+  address_id?: number | null;
+  branch_address_id?: number | null;
+  is_active?: boolean;
+}
+
+export interface AcademicBranchAddress {
+  id: number;
+  branch_id?: number | null;
+  address?: string | null;
+  full_address?: string | null;
+  street?: string | null;
+  street_name?: string | null;
+  city?: string | null;
+  house?: string | number | null;
+  building?: string | number | null;
+}
+
+export interface AcademicEducationPlan {
+  id: number;
+  direction_id?: number | null;
+  name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  is_active?: boolean;
+}
+
+interface AcademicListResponse<T> {
+  items?: T[];
+  total?: number;
+}
+
 function getAccessToken(): string | null {
   return (
     localStorage.getItem('vshp_access_token') ??
@@ -179,6 +216,22 @@ export async function getGroup(
 }
 
 /**
+ * Получить список учебных групп.
+ */
+export async function getGroups(): Promise<
+  AcademicGroup[]
+> {
+  const response = await request<
+    AcademicGroup[] |
+    AcademicListResponse<AcademicGroup>
+  >('/api/v1/groups/');
+
+  return Array.isArray(response)
+    ? response
+    : response.items ?? [];
+}
+
+/**
  * Получить подробную информацию о группе.
  */
 export async function getGroupDetail(
@@ -266,5 +319,61 @@ export async function getDirection(
 ): Promise<AcademicDirection> {
   return request<AcademicDirection>(
     `/api/v1/directions/${directionId}`
+  );
+}
+
+/**
+ * Получить филиал по ID.
+ */
+export async function getBranch(
+  branchId: number
+): Promise<AcademicBranch> {
+  return request<AcademicBranch>(
+    `/api/v1/branches/${branchId}`
+  );
+}
+
+/**
+ * Получить адреса филиалов.
+ */
+export async function getBranchAddresses(): Promise<
+  AcademicBranchAddress[]
+> {
+  const response = await request<
+    AcademicBranchAddress[] |
+    AcademicListResponse<AcademicBranchAddress>
+  >('/api/v1/branch-address');
+
+  return Array.isArray(response)
+    ? response
+    : response.items ?? [];
+}
+
+/**
+ * Получить учебный план по ID.
+ */
+export async function getEducationPlan(
+  educationPlanId: number
+): Promise<AcademicEducationPlan> {
+  const candidateEndpoints = [
+    `/api/v1/education-plans/${educationPlanId}`,
+    `/api/v1/education-plan/${educationPlanId}`,
+  ];
+
+  let lastError: unknown = null;
+
+  for (const endpoint of candidateEndpoints) {
+    try {
+      return await request<AcademicEducationPlan>(
+        endpoint
+      );
+    } catch (requestError) {
+      lastError = requestError;
+    }
+  }
+
+  throw (
+    lastError ??
+    new Error('Учебный план не найден')
   );
 }
