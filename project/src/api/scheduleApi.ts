@@ -170,6 +170,21 @@ export interface Room {
   updated_at: string;
 }
 
+export interface RoomCreate {
+  branch_id: number;
+  name: string;
+  capacity: number | null;
+  description: string | null;
+}
+
+export interface RoomUpdate {
+  branch_id?: number;
+  name?: string;
+  capacity?: number | null;
+  description?: string | null;
+  is_active?: boolean;
+}
+
 interface FastApiErrorResponse {
   detail?: string | Array<{
     loc?: Array<string | number>;
@@ -406,12 +421,19 @@ export async function getRoom(
 }
 
 export async function getRooms(
-  branchId?: number
+  branchId?: number,
+  isActive: boolean | null = true
 ): Promise<Room[]> {
   const searchParams = new URLSearchParams({
-    is_active: 'true',
     limit: '500',
   });
+
+  if (isActive !== null) {
+    searchParams.set(
+      'is_active',
+      String(isActive)
+    );
+  }
 
   if (branchId) {
     searchParams.set('branch_id', String(branchId));
@@ -422,6 +444,50 @@ export async function getRooms(
   );
 
   return response.items;
+}
+
+export async function createRoom(
+  data: RoomCreate
+): Promise<Room> {
+  return request<Room>('/api/v1/rooms', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateRoom(
+  roomId: number,
+  data: RoomUpdate
+): Promise<Room> {
+  return request<Room>(
+    `/api/v1/rooms/${roomId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deactivateRoom(
+  roomId: number
+): Promise<Room> {
+  return request<Room>(
+    `/api/v1/rooms/${roomId}/deactivate`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function activateRoom(
+  roomId: number
+): Promise<Room> {
+  return request<Room>(
+    `/api/v1/rooms/${roomId}/activate`,
+    {
+      method: 'POST',
+    }
+  );
 }
 
 export async function getTeacherLessons(

@@ -81,11 +81,13 @@ export interface AcademicBranch {
   phone?: string | null;
   email?: string | null;
   closed_at?: string | null;
+  created_at?: string;
 }
 
 export interface AcademicBranchAddress {
   id: number;
   branch_id?: number | null;
+  country?: string | null;
   address?: string | null;
   full_address?: string | null;
   street?: string | null;
@@ -93,6 +95,22 @@ export interface AcademicBranchAddress {
   city?: string | null;
   house?: string | number | null;
   building?: string | number | null;
+  postal_code?: string | null;
+}
+
+export interface AcademicBranchMutation {
+  branch_address_id: number;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface AcademicBranchAddressMutation {
+  country: string;
+  city: string;
+  street: string;
+  house: string;
+  building: string | null;
+  postal_code: string | null;
 }
 
 export interface AcademicEducationPlan {
@@ -483,20 +501,124 @@ export async function getBranches(
     : response.items ?? [];
 }
 
+export async function createBranch(
+  data: AcademicBranchMutation
+): Promise<AcademicBranch> {
+  return request<AcademicBranch>(
+    '/api/v1/branches',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateBranch(
+  branchId: number,
+  data: Partial<
+    AcademicBranchMutation & {
+      is_active: boolean;
+    }
+  >
+): Promise<AcademicBranch> {
+  return request<AcademicBranch>(
+    `/api/v1/branches/${branchId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteBranch(
+  branchId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/branches/${branchId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
 /**
  * Получить адреса филиалов.
  */
 export async function getBranchAddresses(): Promise<
   AcademicBranchAddress[]
 > {
-  const response = await request<
-    AcademicBranchAddress[] |
-    AcademicListResponse<AcademicBranchAddress>
-  >('/api/v1/branch-address');
+  const addresses: AcademicBranchAddress[] =
+    [];
+  const pageSize = 100;
 
-  return Array.isArray(response)
-    ? response
-    : response.items ?? [];
+  for (
+    let offset = 0;
+    offset < 10_000;
+    offset += pageSize
+  ) {
+    const response = await request<
+      | AcademicBranchAddress[]
+      | AcademicListResponse<AcademicBranchAddress>
+    >(
+      `/api/v1/branch-address?limit=${pageSize}&offset=${offset}`
+    );
+
+    const items = Array.isArray(response)
+      ? response
+      : response.items ?? [];
+
+    addresses.push(...items);
+
+    const total = Array.isArray(response)
+      ? undefined
+      : response.total;
+
+    if (
+      items.length < pageSize ||
+      (typeof total === 'number' &&
+        addresses.length >= total)
+    ) {
+      break;
+    }
+  }
+
+  return addresses;
+}
+
+export async function createBranchAddress(
+  data: AcademicBranchAddressMutation
+): Promise<AcademicBranchAddress> {
+  return request<AcademicBranchAddress>(
+    '/api/v1/branch-address',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateBranchAddress(
+  addressId: number,
+  data: Partial<AcademicBranchAddressMutation>
+): Promise<AcademicBranchAddress> {
+  return request<AcademicBranchAddress>(
+    `/api/v1/branch-address/${addressId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteBranchAddress(
+  addressId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/branch-address/${addressId}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
 /**

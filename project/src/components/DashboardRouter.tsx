@@ -21,6 +21,7 @@ import {
   Users,
   GraduationCap,
   Layers,
+  Building2,
   Settings,
   Loader2,
   type LucideIcon,
@@ -42,6 +43,7 @@ import AdminDashboard from '../pages/dashboard/admin/AdminDashboard';
 import AdminStudents from '../pages/dashboard/admin/AdminStudents';
 import AdminTeachers from '../pages/dashboard/admin/AdminTeachers';
 import AdminGroups from '../pages/dashboard/admin/AdminGroups';
+import AdminBranches from '../pages/dashboard/admin/AdminBranches';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -228,6 +230,11 @@ const adminNav: NavItem[] = [
     to: '/dashboard/groups',
     label: 'Группы',
     icon: Layers,
+  },
+  {
+    to: '/dashboard/branches',
+    label: 'Филиалы',
+    icon: Building2,
   },
   {
     to: '/dashboard/progress',
@@ -443,6 +450,15 @@ export default function DashboardRouter() {
           element={
             currentRole === 'admin'
               ? <AdminTeachers />
+              : <Progress />
+          }
+        />
+
+        <Route
+          path="branches"
+          element={
+            currentRole === 'admin'
+              ? <AdminBranches />
               : <Progress />
           }
         />
