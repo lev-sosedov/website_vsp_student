@@ -20,6 +20,18 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface UserListResponse {
+  total: number;
+  items: UserProfile[];
+}
+
+export interface UserListFilters {
+  role?: string;
+  isActive?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
 export interface UserProfileUpdate {
   email?: string | null;
   first_name?: string | null;
@@ -43,6 +55,28 @@ function getAccessToken(): string {
     localStorage.getItem('accessToken') ??
     ''
   );
+}
+
+async function getUserApiError(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const data = (await response.json()) as {
+      detail?: string;
+      message?: string;
+    };
+
+    return (
+      data.detail ??
+      data.message ??
+      fallbackMessage
+    );
+  } catch {
+    const responseText = await response.text();
+
+    return responseText || fallbackMessage;
+  }
 }
 
 async function requestUserProfile(
@@ -90,6 +124,79 @@ async function requestUserProfile(
   }
 
   return response.json() as Promise<UserProfile>;
+}
+
+export async function getUsers(
+  filters: UserListFilters = {}
+): Promise<UserListResponse> {
+  const accessToken = getAccessToken();
+  const searchParams = new URLSearchParams();
+
+  searchParams.set(
+    'skip',
+    String(filters.skip ?? 0)
+  );
+  searchParams.set(
+    'limit',
+    String(filters.limit ?? 100)
+  );
+
+  if (filters.role) {
+    searchParams.set('role', filters.role);
+  }
+
+  if (filters.isActive !== undefined) {
+    searchParams.set(
+      'is_active',
+      String(filters.isActive)
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/api/v1/users/?${searchParams.toString()}`,
+    {
+      headers: {
+        Accept: 'application/json',
+        ...(accessToken
+          ? {
+              Authorization:
+                `Bearer ${accessToken}`,
+            }
+          : {}),
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getUserApiError(
+        response,
+        `Не удалось получить список пользователей: ${response.status}`
+      )
+    );
+  }
+
+  const data = (await response.json()) as
+    | UserProfile[]
+    | {
+        total?: number;
+        items?: UserProfile[];
+        users?: UserProfile[];
+      };
+
+  if (Array.isArray(data)) {
+    return {
+      total: data.length,
+      items: data,
+    };
+  }
+
+  const items = data.items ?? data.users ?? [];
+
+  return {
+    total: data.total ?? items.length,
+    items,
+  };
 }
 
 export async function getUserProfile(

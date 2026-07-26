@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ChevronDown,
   Clock3,
   Loader2,
@@ -39,6 +40,7 @@ import {
 } from '../../../api/chatApi';
 
 import GroupChatMembers from '../../../components/messages/GroupChatMembers';
+import SchoolStaffDirectory from '../../../components/messages/SchoolStaffDirectory';
 import UserAvatar from '../../../components/common/UserAvatar';
 
 import {
@@ -117,6 +119,22 @@ function getChatSubtitle(chat: Chat): string {
 
     default:
       return 'Чат';
+  }
+}
+
+function getChatSubtitleClass(chat: Chat): string {
+  switch (chat.chat_type) {
+    case 'private':
+      return 'bg-blue-50 text-blue-700';
+
+    case 'group':
+      return 'bg-violet-50 text-violet-700';
+
+    case 'lesson':
+      return 'bg-amber-50 text-amber-700';
+
+    default:
+      return 'bg-gray-100 text-gray-600';
   }
 }
 
@@ -316,6 +334,23 @@ function getUserDisplayName(
   return name || fallback;
 }
 
+function getDisplayChatTitle(
+  chat: Chat,
+  groupNamesById: Record<number, string>,
+  privateChatPartner?: UserProfile
+): string {
+  if (
+    chat.chat_type === 'private' &&
+    privateChatPartner
+  ) {
+    return getUserDisplayName(
+      privateChatPartner
+    );
+  }
+
+  return getChatTitle(chat, groupNamesById);
+}
+
 function getMessagePreview(
   message: ChatMessage,
   currentUserId: number | null,
@@ -484,6 +519,8 @@ type MessageContextMenuState = {
   y: number;
 };
 
+type MobileMessagesView = 'chats' | 'dialog';
+
 export default function Messages() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] =
@@ -516,6 +553,22 @@ export default function Messages() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
     useState<number | null>(null);
+  const [mobileView, setMobileView] =
+    useState<MobileMessagesView>('chats');
+
+  useEffect(() => {
+    if (
+      activeChatId !== null &&
+      (requestedChatId !== null ||
+        requestedGroupId !== null)
+    ) {
+      setMobileView('dialog');
+    }
+  }, [
+    activeChatId,
+    requestedChatId,
+    requestedGroupId,
+  ]);
 
   const [chatMessages, setChatMessages] =
     useState<ChatMessage[]>([]);
@@ -708,9 +761,12 @@ export default function Messages() {
     }
 
     return chats.filter((chat) => {
-      const title = getChatTitle(
+      const title = getDisplayChatTitle(
         chat,
-        groupNamesById
+        groupNamesById,
+        privateChatPartnersByChatId[
+          chat.id
+        ]
       )
         .toLowerCase();
 
@@ -742,6 +798,7 @@ export default function Messages() {
     currentUserId,
     usersById,
     groupNamesById,
+    privateChatPartnersByChatId,
   ]);
 
   const rememberLastMessage = useCallback(
@@ -2424,6 +2481,7 @@ export default function Messages() {
 
       setExpandedGroupId(null);
       setActiveChatId(privateChat.id);
+      setMobileView('dialog');
     } catch (openError) {
       setError(
         openError instanceof Error
@@ -2472,7 +2530,13 @@ export default function Messages() {
 
       <div className="card grid h-[calc(100dvh-220px)] min-h-[420px] max-h-[calc(100dvh-220px)] grid-cols-1 overflow-hidden lg:grid-cols-3">
         {/* Список чатов */}
-        <aside className="flex min-h-0 flex-col border-gray-100 lg:col-span-1 lg:border-r">
+        <aside
+          className={`min-h-0 flex-col border-gray-100 lg:col-span-1 lg:flex lg:border-r ${
+            mobileView === 'chats'
+              ? 'flex'
+              : 'hidden'
+          }`}
+        >
           <div className="border-b border-gray-100 p-4">
             <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2">
               <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
@@ -2492,6 +2556,22 @@ export default function Messages() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {user?.role?.toLowerCase() ===
+              'teacher' &&
+              currentUserId !== null && (
+                <SchoolStaffDirectory
+                  currentUserId={
+                    currentUserId
+                  }
+                  openingPersonId={
+                    openingPersonId
+                  }
+                  onPersonClick={
+                    handlePersonChatOpen
+                  }
+                />
+              )}
+
             {isChatsLoading ? (
               <div className="flex min-h-52 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-red-600" />
@@ -2510,12 +2590,15 @@ export default function Messages() {
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div>
                 {filteredChats.map((chat) => {
                   const title =
-                    getChatTitle(
+                    getDisplayChatTitle(
                       chat,
-                      groupNamesById
+                      groupNamesById,
+                      privateChatPartnersByChatId[
+                        chat.id
+                      ]
                     );
 
                   const isActive =
@@ -2538,7 +2621,16 @@ export default function Messages() {
                       : null;
 
                   return (
-                    <div key={chat.id}>
+                    <div
+                      key={chat.id}
+                      className={`overflow-hidden border-b border-gray-200 transition last:border-b-0 ${
+                        isActive
+                          ? 'bg-red-50'
+                          : hasUnread
+                            ? 'bg-red-50/30'
+                            : 'bg-white hover:bg-gray-50'
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => {
@@ -2562,11 +2654,12 @@ export default function Messages() {
                           );
 
                           setActiveChatId(chat.id);
+                          setMobileView('dialog');
                         }}
-                        className={`flex w-full gap-3 p-4 text-left transition-colors hover:bg-gray-50 ${
+                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
                           isActive
-                            ? 'bg-red-50'
-                            : ''
+                            ? 'bg-red-50 shadow-[inset_3px_0_0_#dc2626]'
+                            : 'hover:bg-gray-50'
                         }`}
                       >
                         <UserAvatar
@@ -2576,13 +2669,13 @@ export default function Messages() {
                             ]?.avatar_url
                           }
                           alt={title}
-                          className="h-10 w-10 shrink-0 rounded-full object-cover"
+                          className="mt-0.5 h-9 w-9 shrink-0 rounded-full object-cover"
                         />
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
                             <p
-                              className={`truncate text-sm text-gray-900 ${
+                              className={`min-w-0 flex-1 truncate text-sm text-gray-900 ${
                                 hasUnread
                                   ? 'font-bold'
                                   : 'font-semibold'
@@ -2591,9 +2684,9 @@ export default function Messages() {
                               {title}
                             </p>
 
-                            <div className="flex flex-shrink-0 items-center gap-2">
+                            <div className="ml-auto flex shrink-0 items-center gap-1.5">
                               <span
-                                className={`text-xs ${
+                                className={`whitespace-nowrap text-[11px] ${
                                   hasUnread
                                     ? 'font-semibold text-red-600'
                                     : 'text-gray-400'
@@ -2617,9 +2710,13 @@ export default function Messages() {
                             </div>
                           </div>
 
-                          <p className="text-xs text-gray-400">
+                          <span
+                            className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${getChatSubtitleClass(
+                              chat
+                            )}`}
+                          >
                             {getChatSubtitle(chat)}
-                          </p>
+                          </span>
 
                           <p
                             className={`mt-1 truncate text-xs ${
@@ -2697,7 +2794,13 @@ export default function Messages() {
         </aside>
 
         {/* Активный чат */}
-        <section className="relative flex min-h-0 flex-col overflow-hidden lg:col-span-2">
+        <section
+          className={`relative min-h-0 flex-col overflow-hidden lg:col-span-2 lg:flex ${
+            mobileView === 'dialog'
+              ? 'flex'
+              : 'hidden'
+          }`}
+        >
           {!activeChat ? (
             <div className="flex flex-1 flex-col items-center justify-center bg-gray-50/50 px-6 text-center">
               <MessageCircle className="mb-4 h-12 w-12 text-gray-300" />
@@ -2714,24 +2817,40 @@ export default function Messages() {
           ) : (
             <>
               <header className="flex items-center gap-3 border-b border-gray-100 p-4">
+                <button
+                  type="button"
+                  onClick={() => setMobileView('chats')}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 lg:hidden"
+                  aria-label="Вернуться к списку чатов"
+                  title="Назад к чатам"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+
                 <UserAvatar
                   avatarUrl={
                     privateChatPartnersByChatId[
                       activeChat.id
                     ]?.avatar_url
                   }
-                  alt={getChatTitle(
+                  alt={getDisplayChatTitle(
                     activeChat,
-                    groupNamesById
+                    groupNamesById,
+                    privateChatPartnersByChatId[
+                      activeChat.id
+                    ]
                   )}
                   className="h-10 w-10 shrink-0 rounded-full object-cover"
                 />
 
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-gray-900">
-                    {getChatTitle(
+                    {getDisplayChatTitle(
                       activeChat,
-                      groupNamesById
+                      groupNamesById,
+                      privateChatPartnersByChatId[
+                        activeChat.id
+                      ]
                     )}
                   </p>
 

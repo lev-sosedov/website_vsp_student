@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Loader2,
-  MessageSquare,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -25,6 +24,7 @@ import {
 
 import UserAvatar from '../../../components/common/UserAvatar';
 import StatCard from '../../../components/dashboard/StatCard';
+import DashboardNotifications from '../../../components/dashboard/student/StudentDashboardNotifications';
 import { useAuth } from '../../../context/AuthContext';
 
 import {
@@ -49,8 +49,10 @@ import {
 } from '../../../api/homeworkApi';
 
 import {
-  notifications,
-} from '../../../data/dashboardData';
+  getUserNotifications,
+  NOTIFICATIONS_UPDATED_EVENT,
+  type UserNotification,
+} from '../../../api/notificationApi';
 
 interface TeacherDashboardGroup {
   membershipId: number;
@@ -119,6 +121,21 @@ export default function TeacherDashboard() {
     submissionsToReviewCount,
     setSubmissionsToReviewCount,
   ] = useState(0);
+
+  const [
+    dashboardNotifications,
+    setDashboardNotifications,
+  ] = useState<UserNotification[]>([]);
+
+  const [
+    unreadNotificationsCount,
+    setUnreadNotificationsCount,
+  ] = useState(0);
+
+  const [
+    notificationsLoading,
+    setNotificationsLoading,
+  ] = useState(true);
 
   const [
     loading,
@@ -289,9 +306,110 @@ export default function TeacherDashboard() {
     }
   }, [teacherId]);
 
+  const loadNotifications = useCallback(
+    async (background = false) => {
+      if (
+        !Number.isInteger(teacherId) ||
+        teacherId <= 0
+      ) {
+        setDashboardNotifications([]);
+        setUnreadNotificationsCount(0);
+        setNotificationsLoading(false);
+        return;
+      }
+
+      if (!background) {
+        setNotificationsLoading(true);
+      }
+
+      try {
+        const response =
+          await getUserNotifications(
+            teacherId,
+            4
+          );
+
+        setDashboardNotifications(
+          response.items
+        );
+        setUnreadNotificationsCount(
+          Math.max(0, response.unread_count)
+        );
+      } catch (notificationError) {
+        console.error(
+          'Не удалось загрузить уведомления преподавателя:',
+          notificationError
+        );
+
+        if (!background) {
+          setDashboardNotifications([]);
+          setUnreadNotificationsCount(0);
+        }
+      } finally {
+        setNotificationsLoading(false);
+      }
+    },
+    [teacherId]
+  );
+
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    void loadNotifications();
+
+    const refreshNotifications = () => {
+      if (
+        document.visibilityState === 'visible'
+      ) {
+        void loadNotifications(true);
+      }
+    };
+
+    const intervalId = window.setInterval(
+      refreshNotifications,
+      30_000
+    );
+
+    window.addEventListener(
+      NOTIFICATIONS_UPDATED_EVENT,
+      refreshNotifications
+    );
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener(
+        NOTIFICATIONS_UPDATED_EVENT,
+        refreshNotifications
+      );
+    };
+  }, [loadNotifications]);
+
+  const handleNotificationRead = (
+    notificationId: number
+  ) => {
+    setDashboardNotifications(
+      (currentNotifications) =>
+        currentNotifications.map(
+          (notification) =>
+            notification.notification_id ===
+            notificationId
+              ? {
+                  ...notification,
+                  is_read: true,
+                  read_at:
+                    new Date().toISOString(),
+                }
+              : notification
+        )
+    );
+
+    setUnreadNotificationsCount(
+      (currentCount) =>
+        Math.max(0, currentCount - 1)
+    );
+  };
 
   const uniqueStudents = useMemo<
     UniqueStudentItem[]
@@ -568,51 +686,20 @@ export default function TeacherDashboard() {
           )}
         </div>
 
-        <div className="card p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">
-              Уведомления
-            </h2>
-
-            <Link
-              to="/dashboard/notifications"
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              Все
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {notifications.slice(0, 4).map((notification) => (
-              <div
-                key={notification.id}
-                className="flex gap-3"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50">
-                  <MessageSquare className="h-4 w-4 text-red-600" />
-                </div>
-
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    {notification.title}
-                  </p>
-
-                  <p className="line-clamp-1 text-xs text-gray-500">
-                    {notification.text}
-                  </p>
-
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    {notification.time}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-5 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            Уведомления пока используются из тестовых данных.
-          </p>
-        </div>
+        <DashboardNotifications
+          notifications={
+            dashboardNotifications
+          }
+          unreadCount={
+            unreadNotificationsCount
+          }
+          isLoading={
+            notificationsLoading
+          }
+          onNotificationRead={
+            handleNotificationRead
+          }
+        />
       </div>
 
       <div className="card p-6">
