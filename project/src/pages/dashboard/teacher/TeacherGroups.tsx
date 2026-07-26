@@ -9,7 +9,10 @@ import {
   AlertCircle,
   Building2,
   CalendarDays,
+  Eye,
+  Info,
   Loader2,
+  MessageSquare,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -19,7 +22,23 @@ import {
 } from 'react-router-dom';
 
 import UserAvatar from '../../../components/common/UserAvatar';
+import TeacherGroupInfoModal from '../../../components/dashboard/teacher/TeacherGroupInfoModal';
+import TeacherStudentProfileModal from '../../../components/dashboard/teacher/TeacherStudentProfileModal';
 import { useAuth } from '../../../context/AuthContext';
+
+import {
+  getChats,
+} from '../../../api/chatApi';
+
+import {
+  getUserById,
+  type UserProfile,
+} from '../../../api/userApi';
+
+import {
+  openOrCreatePrivateChat,
+  type MessageDirectoryPerson,
+} from '../../../services/messageDirectoryService';
 
 import {
   getActiveUserGroups,
@@ -36,8 +55,22 @@ interface TeacherGroupItem {
   group: AcademicGroup;
   students: GroupStudent[];
   direction: AcademicDirection | null;
+  educationPlan: AcademicEducationPlanResponse | null;
+  branchDisplayName: string;
   branchName: string;
+  fullAddress: string;
   auditoriumName: string;
+}
+
+interface AcademicEducationPlanResponse {
+  id: number;
+  direction_id?: number;
+  name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  duration_months?: number | null;
+  lessons_per_week?: number | null;
+  is_active?: boolean;
 }
 
 interface AcademicBranchResponse {
@@ -134,6 +167,27 @@ Promise<BranchAddressResponse[]> {
   return Array.isArray(response)
     ? response
     : response.items ?? [];
+}
+
+async function getEducationPlan(
+  educationPlanId: number
+): Promise<AcademicEducationPlanResponse | null> {
+  const candidateEndpoints = [
+    `/api/v1/education-plans/${educationPlanId}`,
+    `/api/v1/education-plan/${educationPlanId}`,
+  ];
+
+  for (const endpoint of candidateEndpoints) {
+    try {
+      return await academicRequest<AcademicEducationPlanResponse>(
+        endpoint
+      );
+    } catch {
+      // Gateway может использовать один из двух вариантов пути.
+    }
+  }
+
+  return null;
 }
 
 
@@ -269,6 +323,53 @@ function getBranchStreet(
   );
 }
 
+function getBranchDisplayName(
+  branch: AcademicBranchResponse | null,
+  groupBranchId: number | null | undefined
+): string {
+  return (
+    branch?.name?.trim() ||
+    branch?.title?.trim() ||
+    branch?.short_name?.trim() ||
+    (groupBranchId
+      ? `Филиал №${groupBranchId}`
+      : 'Не указан')
+  );
+}
+
+function getFullAddress(
+  branch: AcademicBranchResponse | null,
+  address: BranchAddressResponse | null
+): string {
+  const fullAddress =
+    address?.full_address?.trim() ||
+    address?.address?.trim() ||
+    branch?.address?.trim();
+
+  if (fullAddress) {
+    return fullAddress;
+  }
+
+  const addressParts = [
+    address?.city,
+    address?.street ?? address?.street_name,
+    address?.house
+      ? `дом ${address.house}`
+      : null,
+    address?.building
+      ? `строение ${address.building}`
+      : null,
+  ]
+    .map((value) =>
+      value === null || value === undefined
+        ? ''
+        : String(value).trim()
+    )
+    .filter(Boolean);
+
+  return addressParts.join(', ') || 'Не указан';
+}
+
 function getAuditoriumName(
   branch: AcademicBranchResponse | null,
   fallbackId: number | null | undefined
@@ -335,6 +436,81 @@ function getStudentName(student: GroupStudent): string {
   return legacyName || `Студент №${student.user_id}`;
 }
 
+function getEducationPlanName(
+  educationPlan:
+    AcademicEducationPlanResponse | null,
+  educationPlanId: number | null | undefined
+): string {
+  return (
+    educationPlan?.name?.trim() ||
+    educationPlan?.title?.trim() ||
+    (educationPlanId
+      ? `Учебный план №${educationPlanId}`
+      : 'Не указан')
+  );
+}
+
+function formatEducationPlanDuration(
+  durationMonths: number | null | undefined
+): string {
+  if (
+    !durationMonths ||
+    !Number.isFinite(durationMonths)
+  ) {
+    return 'Не указана';
+  }
+
+  const lastTwoDigits =
+    durationMonths % 100;
+  const lastDigit =
+    durationMonths % 10;
+
+  let monthWord = 'месяцев';
+
+  if (
+    lastDigit === 1 &&
+    lastTwoDigits !== 11
+  ) {
+    monthWord = 'месяц';
+  } else if (
+    lastDigit >= 2 &&
+    lastDigit <= 4 &&
+    (lastTwoDigits < 12 ||
+      lastTwoDigits > 14)
+  ) {
+    monthWord = 'месяца';
+  }
+
+  return `${durationMonths} ${monthWord}`;
+}
+
+function formatGroupDate(
+  dateValue: string | null | undefined
+): string {
+  if (!dateValue) {
+    return 'Не указана';
+  }
+
+  const [year, month, day] = dateValue
+    .slice(0, 10)
+    .split('-')
+    .map(Number);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    return dateValue;
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day));
+}
+
 export default function TeacherGroups() {
   const navigate = useNavigate();
 
@@ -345,6 +521,48 @@ export default function TeacherGroups() {
   const [groups, setGroups] = useState<TeacherGroupItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [
+    actionError,
+    setActionError,
+  ] = useState<string | null>(null);
+
+  const [
+    expandedStudentKey,
+    setExpandedStudentKey,
+  ] = useState<string | null>(null);
+
+  const [
+    selectedGroupInfo,
+    setSelectedGroupInfo,
+  ] = useState<TeacherGroupItem | null>(null);
+
+  const [
+    selectedProfileStudent,
+    setSelectedProfileStudent,
+  ] = useState<{
+    student: GroupStudent;
+    groupName: string;
+  } | null>(null);
+
+  const [
+    selectedStudentProfile,
+    setSelectedStudentProfile,
+  ] = useState<UserProfile | null>(null);
+
+  const [
+    isStudentProfileLoading,
+    setIsStudentProfileLoading,
+  ] = useState(false);
+
+  const [
+    studentProfileError,
+    setStudentProfileError,
+  ] = useState<string | null>(null);
+
+  const [
+    openingMessageStudentId,
+    setOpeningMessageStudentId,
+  ] = useState<number | null>(null);
 
   const loadGroups = useCallback(async () => {
     if (!user?.id) {
@@ -397,7 +615,11 @@ export default function TeacherGroups() {
             getGroupStudents(membership.group_id),
           ]);
 
-          const [direction, branch] =
+          const [
+            direction,
+            branch,
+            educationPlan,
+          ] =
             await Promise.all([
               group.direction_id
                 ? getDirection(group.direction_id).catch(
@@ -422,6 +644,12 @@ export default function TeacherGroups() {
 
                       return null;
                     }
+                  )
+                : Promise.resolve(null),
+
+              group.education_plan_id
+                ? getEducationPlan(
+                    group.education_plan_id
                   )
                 : Promise.resolve(null),
             ]);
@@ -462,7 +690,18 @@ export default function TeacherGroups() {
             group,
             students: enrichedStudents,
             direction,
+            educationPlan,
+            branchDisplayName:
+              getBranchDisplayName(
+                branch,
+                group.branch_id
+              ),
             branchName,
+            fullAddress:
+              getFullAddress(
+                branch,
+                branchAddress
+              ),
             auditoriumName:
               getAuditoriumName(
                 branch,
@@ -496,6 +735,141 @@ export default function TeacherGroups() {
   useEffect(() => {
     void loadGroups();
   }, [loadGroups]);
+
+  useEffect(() => {
+    if (
+      !selectedGroupInfo &&
+      !selectedProfileStudent
+    ) {
+      return;
+    }
+
+    const handleKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      if (event.key === 'Escape') {
+        if (openingMessageStudentId !== null) {
+          return;
+        }
+
+        setSelectedGroupInfo(null);
+        setSelectedProfileStudent(null);
+        setSelectedStudentProfile(null);
+        setStudentProfileError(null);
+      }
+    };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [
+    openingMessageStudentId,
+    selectedGroupInfo,
+    selectedProfileStudent,
+  ]);
+
+  const openStudentProfile = useCallback(
+    async (
+      student: GroupStudent,
+      groupName: string
+    ) => {
+      setSelectedProfileStudent({
+        student,
+        groupName,
+      });
+      setSelectedStudentProfile(null);
+      setStudentProfileError(null);
+      setIsStudentProfileLoading(true);
+
+      try {
+        const profile = await getUserById(
+          student.user_id
+        );
+
+        setSelectedStudentProfile(profile);
+      } catch (profileError) {
+        setStudentProfileError(
+          profileError instanceof Error
+            ? profileError.message
+            : 'Не удалось загрузить профиль студента'
+        );
+      } finally {
+        setIsStudentProfileLoading(false);
+      }
+    },
+    []
+  );
+
+  const openStudentMessage = useCallback(
+    async (student: GroupStudent) => {
+      if (
+        !user?.id ||
+        openingMessageStudentId !== null
+      ) {
+        return;
+      }
+
+      setOpeningMessageStudentId(
+        student.user_id
+      );
+      setActionError(null);
+
+      const target: MessageDirectoryPerson = {
+        userId: student.user_id,
+        displayName: getStudentName(student),
+        avatarUrl: student.avatar_url,
+        role: 'student',
+      };
+
+      try {
+        const chatsResponse = await getChats(
+          user.id
+        );
+
+        const privateChat =
+          await openOrCreatePrivateChat(
+            chatsResponse.items,
+            user.id,
+            target
+          );
+
+        navigate(
+          `/dashboard/messages?chatId=${privateChat.id}`
+        );
+      } catch (messageError) {
+        setActionError(
+          messageError instanceof Error
+            ? messageError.message
+            : 'Не удалось открыть чат со студентом'
+        );
+      } finally {
+        setOpeningMessageStudentId(null);
+      }
+    },
+    [
+      navigate,
+      openingMessageStudentId,
+      user?.id,
+    ]
+  );
+
+  const closeStudentProfile = () => {
+    if (openingMessageStudentId !== null) {
+      return;
+    }
+
+    setSelectedProfileStudent(null);
+    setSelectedStudentProfile(null);
+    setStudentProfileError(null);
+  };
 
   const totalStudentsCount = useMemo(
     () =>
@@ -547,6 +921,22 @@ export default function TeacherGroups() {
 
             <p className="mt-1 text-sm">
               {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+          <div>
+            <p className="font-medium">
+              Не удалось выполнить действие
+            </p>
+
+            <p className="mt-1 text-sm">
+              {actionError}
             </p>
           </div>
         </div>
@@ -643,9 +1033,20 @@ export default function TeacherGroups() {
                       </p>
                     </div>
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
-                      <Users className="h-5 w-5" />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedGroupInfo(
+                          groupItem
+                        )
+                      }
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-200 hover:bg-red-100"
+                    >
+                      <Info className="h-4 w-4" />
+                      <span className="hidden sm:inline">
+                        О группе
+                      </span>
+                    </button>
                   </div>
 
                   <div className="mt-5 flex flex-wrap gap-3">
@@ -668,7 +1069,7 @@ export default function TeacherGroups() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 p-5">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                     Студенты группы
                   </p>
@@ -680,29 +1081,107 @@ export default function TeacherGroups() {
                       </p>
                     </div>
                   ) : (
-                    <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">
-                      {students.map((student) => (
-                        <div
-                          key={student.membership_id}
-                          className="flex items-center rounded-xl bg-gray-50 px-3 py-2.5"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <UserAvatar
-                              avatarUrl={
-                                student.avatar_url
-                              }
-                              alt={getStudentName(
-                                student
-                              )}
-                              className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
-                            />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3 pr-2">
+                      {students.map((student) => {
+                        const studentKey =
+                          `${group.id}:${student.user_id}`;
 
-                            <p className="truncate text-sm font-medium text-gray-900">
-                              {getStudentName(student)}
-                            </p>
+                        const isExpanded =
+                          expandedStudentKey ===
+                          studentKey;
+
+                        const isOpeningMessage =
+                          openingMessageStudentId ===
+                          student.user_id;
+
+                        return (
+                          <div
+                            key={student.membership_id}
+                            className={`overflow-hidden rounded-xl border transition ${
+                              isExpanded
+                                ? 'border-red-100 bg-red-50/40'
+                                : 'border-transparent bg-gray-50 hover:border-gray-200'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedStudentKey(
+                                  isExpanded
+                                    ? null
+                                    : studentKey
+                                );
+                                setActionError(null);
+                              }}
+                              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                              aria-expanded={isExpanded}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <UserAvatar
+                                  avatarUrl={
+                                    student.avatar_url
+                                  }
+                                  alt={getStudentName(
+                                    student
+                                  )}
+                                  className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
+                                />
+
+                                <p className="truncate text-sm font-medium text-gray-900">
+                                  {getStudentName(
+                                    student
+                                  )}
+                                </p>
+                              </div>
+
+                              <span className="shrink-0 text-xs font-medium text-gray-400">
+                                {isExpanded
+                                  ? 'Скрыть'
+                                  : 'Действия'}
+                              </span>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="grid gap-2 border-t border-red-100 px-3 py-3 sm:grid-cols-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void openStudentProfile(
+                                      student,
+                                      group.name
+                                    )
+                                  }
+                                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Открыть профиль
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void openStudentMessage(
+                                      student
+                                    )
+                                  }
+                                  disabled={
+                                    openingMessageStudentId !==
+                                    null
+                                  }
+                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  {isOpeningMessage ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <MessageSquare className="h-4 w-4" />
+                                  )}
+                                  Написать сообщение
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -738,6 +1217,101 @@ export default function TeacherGroups() {
             );
           })}
         </div>
+      )}
+
+      {selectedGroupInfo && (
+        <TeacherGroupInfoModal
+          isOpen
+          groupName={
+            selectedGroupInfo.group.name
+          }
+          isActive={
+            selectedGroupInfo.group
+              .is_active !== false
+          }
+          description={
+            selectedGroupInfo.group
+              .description ?? null
+          }
+          directionName={
+            selectedGroupInfo.direction
+              ?.name ?? 'Не указано'
+          }
+          directionDescription={
+            selectedGroupInfo.direction
+              ?.description ?? null
+          }
+          educationPlanName={getEducationPlanName(
+            selectedGroupInfo.educationPlan,
+            selectedGroupInfo.group
+              .education_plan_id
+          )}
+          educationPlanDescription={
+            selectedGroupInfo.educationPlan
+              ?.description ?? null
+          }
+          educationPlanDuration={formatEducationPlanDuration(
+            selectedGroupInfo.educationPlan
+              ?.duration_months
+          )}
+          lessonsPerWeek={
+            selectedGroupInfo.educationPlan
+              ?.lessons_per_week
+              ? String(
+                  selectedGroupInfo
+                    .educationPlan
+                    .lessons_per_week
+                )
+              : 'Не указано'
+          }
+          startDate={formatGroupDate(
+            selectedGroupInfo.group.start_date
+          )}
+          endDate={formatGroupDate(
+            selectedGroupInfo.group.end_date
+          )}
+          branchName={
+            selectedGroupInfo.branchDisplayName
+          }
+          address={
+            selectedGroupInfo.fullAddress
+          }
+          onClose={() =>
+            setSelectedGroupInfo(null)
+          }
+        />
+      )}
+
+      {selectedProfileStudent && (
+        <TeacherStudentProfileModal
+          isOpen
+          isLoading={
+            isStudentProfileLoading
+          }
+          isOpeningMessage={
+            openingMessageStudentId ===
+            selectedProfileStudent.student
+              .user_id
+          }
+          error={studentProfileError}
+          studentName={getStudentName(
+            selectedProfileStudent.student
+          )}
+          studentAvatarUrl={
+            selectedProfileStudent.student
+              .avatar_url
+          }
+          groupName={
+            selectedProfileStudent.groupName
+          }
+          profile={selectedStudentProfile}
+          onClose={closeStudentProfile}
+          onMessage={() =>
+            void openStudentMessage(
+              selectedProfileStudent.student
+            )
+          }
+        />
       )}
     </div>
   );
