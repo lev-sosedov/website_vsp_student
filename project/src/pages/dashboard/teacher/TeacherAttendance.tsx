@@ -22,6 +22,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 
+import UserAvatar from '../../../components/common/UserAvatar';
 import { useAuth } from '../../../context/AuthContext';
 
 import {
@@ -154,31 +155,6 @@ function getStudentName(
   }
 
   return `Студент №${student.user_id}`;
-}
-
-function getStudentInitials(
-  student: GroupStudent
-): string {
-  const firstLetter =
-    student.first_name?.trim().charAt(0) ?? '';
-
-  const lastLetter =
-    student.last_name?.trim().charAt(0) ?? '';
-
-  const initials = `${lastLetter}${firstLetter}`;
-
-  if (initials) {
-    return initials.toUpperCase();
-  }
-
-  if (student.user_name?.trim()) {
-    return student.user_name
-      .trim()
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-  return String(student.user_id);
 }
 
 function createEmptyAttendanceState():
@@ -1136,21 +1112,13 @@ export default function TeacherAttendance() {
                   >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
                       <div className="flex min-w-0 items-center gap-3 xl:w-64">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-sm font-semibold text-red-600">
-                          {student.avatar_url ? (
-                            <img
-                              src={
-                                student.avatar_url
-                              }
-                              alt=""
-                              className="h-10 w-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            getStudentInitials(
-                              student
-                            )
-                          )}
-                        </div>
+                        <UserAvatar
+                          avatarUrl={
+                            student.avatar_url
+                          }
+                          alt={getStudentName(student)}
+                          className="h-10 w-10 shrink-0 rounded-full object-cover"
+                        />
 
                         <div className="min-w-0">
                           <p className="truncate font-medium text-gray-900">

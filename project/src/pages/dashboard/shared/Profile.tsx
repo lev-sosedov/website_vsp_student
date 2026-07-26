@@ -23,11 +23,11 @@ import {
   type UserProfileUpdate,
 } from '../../../api/userApi';
 
+import UserAvatar from '../../../components/common/UserAvatar';
 import { useAuth } from '../../../context/AuthContext';
 
 import {
   getUserDisplayName,
-  getUserInitials,
 } from '../../../utils/userDisplayName';
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
@@ -166,7 +166,6 @@ export default function Profile() {
   }
 
   const displayName = getUserDisplayName(user);
-  const initials = getUserInitials(user);
 
   const openAvatarPicker = () => {
     if (!isUploadingAvatar) {
@@ -391,15 +390,11 @@ export default function Profile() {
               title="Изменить аватарку"
               aria-label="Изменить аватарку"
             >
-              {user.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt={displayName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials
-              )}
+              <UserAvatar
+                avatarUrl={user.avatar_url}
+                alt={displayName}
+                className="h-full w-full object-cover"
+              />
 
               <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/45 group-hover:opacity-100">
                 {isUploadingAvatar ? (

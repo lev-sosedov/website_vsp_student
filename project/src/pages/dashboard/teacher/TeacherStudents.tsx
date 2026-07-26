@@ -20,6 +20,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 
+import UserAvatar from '../../../components/common/UserAvatar';
 import { useAuth } from '../../../context/AuthContext';
 
 import {
@@ -67,29 +68,6 @@ function getStudentName(student: GroupStudent): string {
   }
 
   return `Студент №${student.user_id}`;
-}
-
-function getStudentInitials(student: GroupStudent): string {
-  const firstLetter =
-    student.first_name?.trim().charAt(0) ?? '';
-
-  const lastLetter =
-    student.last_name?.trim().charAt(0) ?? '';
-
-  const initials = `${lastLetter}${firstLetter}`;
-
-  if (initials) {
-    return initials.toUpperCase();
-  }
-
-  if (student.user_name?.trim()) {
-    return student.user_name
-      .trim()
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-  return String(student.user_id);
 }
 
 export default function TeacherStudents() {
@@ -529,22 +507,16 @@ export default function TeacherStudents() {
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-50 text-sm font-semibold text-red-600">
-                        {studentItem.student.avatar_url ? (
-                          <img
-                            src={
-                              studentItem.student
-                                .avatar_url
-                            }
-                            alt=""
-                            className="h-11 w-11 rounded-full object-cover"
-                          />
-                        ) : (
-                          getStudentInitials(
-                            studentItem.student
-                          )
+                      <UserAvatar
+                        avatarUrl={
+                          studentItem.student
+                            .avatar_url
+                        }
+                        alt={getStudentName(
+                          studentItem.student
                         )}
-                      </div>
+                        className="h-11 w-11 shrink-0 rounded-full object-cover"
+                      />
 
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-gray-900">

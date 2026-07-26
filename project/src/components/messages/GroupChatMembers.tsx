@@ -9,6 +9,8 @@ import type {
   MessageGroupDirectory,
 } from '../../services/messageDirectoryService';
 
+import UserAvatar from '../common/UserAvatar';
+
 interface GroupChatMembersProps {
   directory: MessageGroupDirectory | null;
   isExpanded: boolean;
@@ -26,28 +28,12 @@ function PersonAvatar({
 }: {
   person: MessageDirectoryPerson;
 }) {
-  const initials = person.displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-
   return (
-    <div className="flex h-8 w-8 shrink-0 overflow-hidden rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600">
-      {person.avatarUrl ? (
-        <img
-          src={person.avatarUrl}
-          alt={person.displayName}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <span className="m-auto">
-          {initials || '?'}
-        </span>
-      )}
-    </div>
+    <UserAvatar
+      avatarUrl={person.avatarUrl}
+      alt={person.displayName}
+      className="h-8 w-8 shrink-0 rounded-full object-cover"
+    />
   );
 }
 

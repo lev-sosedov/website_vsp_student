@@ -25,6 +25,8 @@ import {
   NOTIFICATIONS_UPDATED_EVENT,
 } from '../../api/notificationApi';
 
+import UserAvatar from '../common/UserAvatar';
+
 import { useAuth } from '../../context/AuthContext';
 
 export interface NavItem {
@@ -121,28 +123,6 @@ function getDisplayName(
   return 'Пользователь';
 }
 
-function getInitials(
-  displayName: string
-): string {
-  const words = displayName
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length === 0) {
-    return 'П';
-  }
-
-  if (words.length === 1) {
-    return words[0]
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-  return `${words[0][0] ?? ''}${words[1][0] ?? ''}`
-    .toUpperCase();
-}
-
 function getRoleLabel(
   role: string | null | undefined,
   fallbackLabel: string
@@ -209,11 +189,6 @@ export default function DashboardLayout({
       user?.user_name,
       user?.phone_number,
     ]
-  );
-
-  const initials = useMemo(
-    () => getInitials(displayName),
-    [displayName]
   );
 
   const displayedRole = useMemo(
@@ -395,17 +370,11 @@ export default function DashboardLayout({
 
         <div className="border-b border-gray-100 px-4 py-4">
           <div className="flex items-center gap-3">
-            {user?.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt={displayName}
-                className="h-10 w-10 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 font-semibold text-red-600">
-                {initials}
-              </div>
-            )}
+            <UserAvatar
+              avatarUrl={user?.avatar_url}
+              alt={displayName}
+              className="h-10 w-10 rounded-full object-cover"
+            />
 
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-gray-900">

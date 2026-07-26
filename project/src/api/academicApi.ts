@@ -1,3 +1,7 @@
+import {
+  getUsersByIds,
+} from './userApi';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 export type GroupMemberRole =
@@ -214,9 +218,44 @@ export async function getGroupMembers(
 export async function getGroupStudents(
   groupId: number
 ): Promise<GroupStudentListResponse> {
-  return request<GroupStudentListResponse>(
+  const response =
+    await request<GroupStudentListResponse>(
     `/api/v1/group-members/group/${groupId}/students`
   );
+
+  const profiles = await getUsersByIds(
+    response.items.map(
+      (student) => student.user_id
+    )
+  );
+
+  return {
+    ...response,
+    items: response.items.map((student) => {
+      const profile =
+        profiles[student.user_id];
+
+      if (!profile) {
+        return student;
+      }
+
+      return {
+        ...student,
+        user_name:
+          profile.user_name ??
+          student.user_name,
+        first_name:
+          profile.first_name ??
+          student.first_name,
+        last_name:
+          profile.last_name ??
+          student.last_name,
+        avatar_url:
+          profile.avatar_url ??
+          student.avatar_url,
+      };
+    }),
+  };
 }
 
 /**

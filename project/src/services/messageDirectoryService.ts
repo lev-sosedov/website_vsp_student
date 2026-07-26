@@ -152,18 +152,47 @@ export async function loadMessageGroupDirectory(
   let students: MessageDirectoryPerson[] = [];
 
   if (studentsResult.status === 'fulfilled') {
-    students = studentsResult.value.items
-      .filter((student) => student.is_active)
+    const activeStudents =
+      studentsResult.value.items.filter(
+        (student) => student.is_active
+      );
+
+    /*
+     * Academic Service может вернуть только ID и
+     * технические подписи. Всегда дополняем участников
+     * актуальными профилями из User Service.
+     */
+    const profiles = await getUsersByIds(
+      activeStudents.map(
+        (student) => student.user_id
+      )
+    );
+
+    students = activeStudents
       .map(
         (
           student
-        ): MessageDirectoryPerson => ({
-          userId: student.user_id,
-          displayName:
-            getStudentName(student),
-          avatarUrl: student.avatar_url,
-          role: 'student',
-        })
+        ): MessageDirectoryPerson => {
+          const profile =
+            profiles[student.user_id];
+
+          return {
+            userId: student.user_id,
+            displayName: profile
+              ? joinName(
+                  [
+                    profile.first_name,
+                    profile.user_name,
+                  ],
+                  getStudentName(student)
+                )
+              : getStudentName(student),
+            avatarUrl:
+              profile?.avatar_url ??
+              student.avatar_url,
+            role: 'student',
+          };
+        }
       );
   } else {
     const studentMemberships = members.filter(

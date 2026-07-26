@@ -23,6 +23,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 
+import UserAvatar from '../../../components/common/UserAvatar';
 import StatCard from '../../../components/dashboard/StatCard';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -95,29 +96,6 @@ function getStudentName(student: GroupStudent): string {
   }
 
   return `Студент №${student.user_id}`;
-}
-
-function getStudentInitials(student: GroupStudent): string {
-  const firstLetter =
-    student.first_name?.trim().charAt(0) ?? '';
-
-  const lastLetter =
-    student.last_name?.trim().charAt(0) ?? '';
-
-  const initials = `${lastLetter}${firstLetter}`;
-
-  if (initials) {
-    return initials.toUpperCase();
-  }
-
-  if (student.user_name?.trim()) {
-    return student.user_name
-      .trim()
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-  return String(student.user_id);
 }
 
 export default function TeacherDashboard() {
@@ -703,22 +681,16 @@ export default function TeacherDashboard() {
                     >
                       <td className="py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-semibold text-red-600">
-                            {studentItem.student.avatar_url ? (
-                              <img
-                                src={
-                                  studentItem.student
-                                    .avatar_url
-                                }
-                                alt=""
-                                className="h-8 w-8 rounded-full object-cover"
-                              />
-                            ) : (
-                              getStudentInitials(
-                                studentItem.student
-                              )
+                          <UserAvatar
+                            avatarUrl={
+                              studentItem.student
+                                .avatar_url
+                            }
+                            alt={getStudentName(
+                              studentItem.student
                             )}
-                          </div>
+                            className="h-8 w-8 shrink-0 rounded-full object-cover"
+                          />
 
                           <span className="font-medium text-gray-900">
                             {getStudentName(

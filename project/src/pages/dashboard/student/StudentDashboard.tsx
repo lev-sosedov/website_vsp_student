@@ -52,7 +52,7 @@ function getGreetingName(
   lastName: string | null | undefined,
   userName: string | null | undefined
 ): string {
-  const fullName = [firstName, lastName]
+  const fullName = [firstName, userName]
     .map((value) => value?.trim())
     .filter(Boolean)
     .join(' ');
@@ -282,20 +282,6 @@ export default function StudentDashboard() {
             Вот что у вас сегодня на повестке.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadDashboard()}
-          disabled={isLoading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-red-200 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Обновить
-        </button>
       </div>
 
       {error && (

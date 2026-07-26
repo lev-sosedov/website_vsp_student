@@ -28,6 +28,7 @@ import {
 import {
   deleteChatMessage,
   ensureStudentAdminChat,
+  getChatMembers,
   getChatMessages,
   getChats,
   markChatAsRead,
@@ -38,6 +39,7 @@ import {
 } from '../../../api/chatApi';
 
 import GroupChatMembers from '../../../components/messages/GroupChatMembers';
+import UserAvatar from '../../../components/common/UserAvatar';
 
 import {
   ChatSocket,
@@ -314,15 +316,6 @@ function getUserDisplayName(
   return name || fallback;
 }
 
-function getUserInitials(
-  user: UserProfile | undefined,
-  fallbackUserId?: number | string
-): string {
-  return getInitials(
-    getUserDisplayName(user, fallbackUserId)
-  );
-}
-
 function getMessagePreview(
   message: ChatMessage,
   currentUserId: number | null,
@@ -343,25 +336,6 @@ function getMessagePreview(
     usersById[message.sender_id],
     message.sender_id
   )}: ${content}`;
-}
-
-function getInitials(title: string): string {
-  const parts = title
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return '?';
-  }
-
-  if (parts.length === 1) {
-    return parts[0][0].toUpperCase();
-  }
-
-  return (
-    parts[0][0] + parts[1][0]
-  ).toUpperCase();
 }
 
 function formatMessageTime(
@@ -587,6 +561,11 @@ export default function Messages() {
 
   const [usersById, setUsersById] =
     useState<Record<number, UserProfile>>({});
+
+  const [
+    privateChatPartnersByChatId,
+    setPrivateChatPartnersByChatId,
+  ] = useState<Record<number, UserProfile>>({});
 
   const [
     groupDirectoriesById,
@@ -1381,6 +1360,101 @@ export default function Messages() {
     groupChatIdsKey,
     groupDirectoryReloadToken,
   ]);
+
+  useEffect(() => {
+    if (currentUserId === null) {
+      setPrivateChatPartnersByChatId({});
+      return;
+    }
+
+    const privateChats = chats.filter(
+      (chat) =>
+        chat.chat_type === 'private' &&
+        chat.is_active &&
+        !chat.is_archived
+    );
+
+    if (privateChats.length === 0) {
+      setPrivateChatPartnersByChatId({});
+      return;
+    }
+
+    let isCancelled = false;
+
+    void Promise.allSettled(
+      privateChats.map(async (chat) => {
+        const members = (
+          await getChatMembers(chat.id)
+        ).items.filter(
+          (member) =>
+            member.is_active &&
+            member.user_id !== currentUserId
+        );
+
+        return {
+          chatId: chat.id,
+          partnerUserId:
+            members[0]?.user_id ?? null,
+        };
+      })
+    ).then(async (memberResults) => {
+      const chatPartnerIds: Array<{
+        chatId: number;
+        partnerUserId: number;
+      }> = [];
+
+      memberResults.forEach((result) => {
+        if (
+          result.status === 'fulfilled' &&
+          result.value.partnerUserId !== null
+        ) {
+          chatPartnerIds.push({
+            chatId: result.value.chatId,
+            partnerUserId:
+              result.value.partnerUserId,
+          });
+        }
+      });
+
+      const profiles = await getUsersByIds(
+        chatPartnerIds.map(
+          (entry) => entry.partnerUserId
+        )
+      );
+
+      if (isCancelled) {
+        return;
+      }
+
+      const nextPartners: Record<
+        number,
+        UserProfile
+      > = {};
+
+      chatPartnerIds.forEach(
+        ({ chatId, partnerUserId }) => {
+          const profile =
+            profiles[partnerUserId];
+
+          if (profile) {
+            nextPartners[chatId] = profile;
+          }
+        }
+      );
+
+      setPrivateChatPartnersByChatId(
+        (currentPartners) =>
+          JSON.stringify(currentPartners) ===
+          JSON.stringify(nextPartners)
+            ? currentPartners
+            : nextPartners
+      );
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [chats, currentUserId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -2495,9 +2569,15 @@ export default function Messages() {
                             : ''
                         }`}
                       >
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-600">
-                          {getInitials(title)}
-                        </div>
+                        <UserAvatar
+                          avatarUrl={
+                            privateChatPartnersByChatId[
+                              chat.id
+                            ]?.avatar_url
+                          }
+                          alt={title}
+                          className="h-10 w-10 shrink-0 rounded-full object-cover"
+                        />
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
@@ -2634,14 +2714,18 @@ export default function Messages() {
           ) : (
             <>
               <header className="flex items-center gap-3 border-b border-gray-100 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-600">
-                  {getInitials(
-                    getChatTitle(
-                      activeChat,
-                      groupNamesById
-                    )
+                <UserAvatar
+                  avatarUrl={
+                    privateChatPartnersByChatId[
+                      activeChat.id
+                    ]?.avatar_url
+                  }
+                  alt={getChatTitle(
+                    activeChat,
+                    groupNamesById
                   )}
-                </div>
+                  className="h-10 w-10 shrink-0 rounded-full object-cover"
+                />
 
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-gray-900">
@@ -2828,28 +2912,19 @@ export default function Messages() {
                         }`}
                       >
                         <div
-                          className={`mt-auto flex h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-red-100 text-[11px] font-semibold text-red-600 ${
+                          className={`mt-auto flex h-8 w-8 flex-shrink-0 overflow-hidden rounded-full ${
                             isOwnMessage
                               ? 'order-2 ml-2'
                               : 'mr-2'
                           }`}
                         >
-                            {senderProfile?.avatar_url ? (
-                              <img
-                                src={
-                                  senderProfile.avatar_url
-                                }
-                                alt={senderName}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="m-auto">
-                                {getUserInitials(
-                                  senderProfile,
-                                  message.sender_id
-                                )}
-                              </span>
-                            )}
+                          <UserAvatar
+                            avatarUrl={
+                              senderProfile?.avatar_url
+                            }
+                            alt={senderName}
+                            className="h-full w-full object-cover"
+                          />
                         </div>
 
                         <div

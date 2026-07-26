@@ -18,6 +18,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 
+import UserAvatar from '../../../components/common/UserAvatar';
 import { useAuth } from '../../../context/AuthContext';
 
 import {
@@ -233,11 +234,11 @@ function extractStreetName(
 
   return streetPart
     .replace(
-      /\s+(д\.?|дом)\s*\d+[А-Яа-яA-Za-z\d\/-]*.*$/i,
+      /\s+(д\.?|дом)\s*\d+[А-Яа-яA-Za-z\d/-]*.*$/i,
       ''
     )
     .replace(
-      /,?\s*\d+[А-Яа-яA-Za-z\d\/-]*\s*$/,
+      /,?\s*\d+[А-Яа-яA-Za-z\d/-]*\s*$/,
       ''
     )
     .trim();
@@ -332,22 +333,6 @@ function getStudentName(student: GroupStudent): string {
     .join(' ');
 
   return legacyName || `Студент №${student.user_id}`;
-}
-
-function getStudentInitials(
-  student: GroupStudent
-): string {
-  const displayName = getStudentName(student);
-
-  const initials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join('')
-    .toUpperCase();
-
-  return initials || 'С';
 }
 
 export default function TeacherGroups() {
@@ -702,17 +687,15 @@ export default function TeacherGroups() {
                           className="flex items-center rounded-xl bg-gray-50 px-3 py-2.5"
                         >
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-xs font-semibold text-red-600 shadow-sm">
-                              {student.avatar_url ? (
-                                <img
-                                  src={student.avatar_url}
-                                  alt={getStudentName(student)}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                getStudentInitials(student)
+                            <UserAvatar
+                              avatarUrl={
+                                student.avatar_url
+                              }
+                              alt={getStudentName(
+                                student
                               )}
-                            </div>
+                              className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
+                            />
 
                             <p className="truncate text-sm font-medium text-gray-900">
                               {getStudentName(student)}

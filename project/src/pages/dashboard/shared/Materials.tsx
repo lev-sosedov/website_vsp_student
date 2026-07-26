@@ -40,6 +40,11 @@ import {
   type LessonSchedule,
 } from '../../../api/scheduleApi';
 
+import {
+  getUsersByIds,
+  type UserProfile,
+} from '../../../api/userApi';
+
 interface MaterialItem {
   content: LessonContent;
   lesson: LessonSchedule;
@@ -47,6 +52,7 @@ interface MaterialItem {
   links: LessonLink[];
   groupId: number;
   groupName: string;
+  teacherName: string;
 }
 
 interface StudentMaterialGroup {
@@ -99,6 +105,29 @@ function getLessonTitle(
   lesson: LessonSchedule
 ): string {
   return lesson.topic?.trim() || 'Занятие';
+}
+
+function getTeacherName(
+  teacher: UserProfile | undefined,
+  teacherId: number
+): string {
+  if (!teacher) {
+    return `Преподаватель №${teacherId}`;
+  }
+
+  const name = [
+    teacher.user_name,
+    teacher.last_name,
+  ]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return (
+    name ||
+    `Преподаватель №${teacherId}`
+  );
 }
 
 function getFileIcon(
@@ -288,6 +317,18 @@ export default function Materials() {
         const groupLessons =
           groupLessonLists.flat();
 
+        const teacherProfiles =
+          await getUsersByIds(
+            [
+              ...new Set(
+                groupLessons.map(
+                  (lesson) =>
+                    lesson.teacher_id
+                )
+              ),
+            ]
+          );
+
         const lessonsById = new Map(
           groupLessons.map((lesson) => [
             lesson.id,
@@ -359,6 +400,12 @@ export default function Materials() {
                       lesson.group_id
                     ) ??
                     `Группа №${lesson.group_id}`,
+                  teacherName: getTeacherName(
+                    teacherProfiles[
+                      lesson.teacher_id
+                    ],
+                    lesson.teacher_id
+                  ),
                 };
               }
             )
@@ -835,10 +882,8 @@ export default function Materials() {
                             <span className="inline-flex items-center gap-1.5">
                               <UserRound className="h-3.5 w-3.5" />
 
-                              Преподаватель №
                               {
-                                material.lesson
-                                  .teacher_id
+                                material.teacherName
                               }
                             </span>
                           </div>
