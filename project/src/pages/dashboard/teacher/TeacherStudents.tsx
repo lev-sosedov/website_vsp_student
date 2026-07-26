@@ -10,6 +10,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Loader2,
+  Mail,
+  MessageSquare,
+  Phone,
   RefreshCw,
   Search,
   UserRound,
@@ -21,7 +24,12 @@ import {
 } from 'react-router-dom';
 
 import UserAvatar from '../../../components/common/UserAvatar';
+import TeacherStudentProfileModal from '../../../components/dashboard/teacher/TeacherStudentProfileModal';
 import { useAuth } from '../../../context/AuthContext';
+
+import {
+  getChats,
+} from '../../../api/chatApi';
 
 import {
   getActiveUserGroups,
@@ -30,6 +38,17 @@ import {
   type AcademicGroup,
   type GroupStudent,
 } from '../../../api/academicApi';
+
+import {
+  getUserById,
+  getUsersByIds,
+  type UserProfile,
+} from '../../../api/userApi';
+
+import {
+  openOrCreatePrivateChat,
+  type MessageDirectoryPerson,
+} from '../../../services/messageDirectoryService';
 
 interface TeacherGroupOption {
   membershipId: number;
@@ -40,6 +59,7 @@ interface TeacherGroupOption {
 interface TeacherStudentItem {
   student: GroupStudent;
   groups: AcademicGroup[];
+  profile: UserProfile | null;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -50,11 +70,23 @@ function getErrorMessage(error: unknown): string {
   return 'Произошла неизвестная ошибка';
 }
 
-function getStudentName(student: GroupStudent): string {
+function getStudentName(
+  student: GroupStudent,
+  profile?: UserProfile | null
+): string {
+  const surname =
+    profile?.first_name ??
+    student.first_name;
+
+  const firstName =
+    profile?.user_name ??
+    student.user_name;
+
   const fullName = [
-    student.last_name,
-    student.first_name,
+    surname,
+    firstName,
   ]
+    .map((value) => value?.trim())
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -63,11 +95,25 @@ function getStudentName(student: GroupStudent): string {
     return fullName;
   }
 
-  if (student.user_name?.trim()) {
-    return student.user_name.trim();
+  const legacyName = [
+    profile?.last_name ??
+      student.last_name,
+    surname,
+  ]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  if (legacyName) {
+    return legacyName;
   }
 
   return `Студент №${student.user_id}`;
+}
+
+function normalizePhone(value: string): string {
+  return value.replace(/\D/g, '');
 }
 
 export default function TeacherStudents() {
@@ -101,12 +147,52 @@ export default function TeacherStudents() {
     setError,
   ] = useState<string | null>(null);
 
+  const [
+    studentProfiles,
+    setStudentProfiles,
+  ] = useState<Record<number, UserProfile>>(
+    {}
+  );
+
+  const [
+    actionError,
+    setActionError,
+  ] = useState<string | null>(null);
+
+  const [
+    selectedStudent,
+    setSelectedStudent,
+  ] = useState<TeacherStudentItem | null>(
+    null
+  );
+
+  const [
+    selectedStudentProfile,
+    setSelectedStudentProfile,
+  ] = useState<UserProfile | null>(null);
+
+  const [
+    isProfileLoading,
+    setIsProfileLoading,
+  ] = useState(false);
+
+  const [
+    profileError,
+    setProfileError,
+  ] = useState<string | null>(null);
+
+  const [
+    openingMessageStudentId,
+    setOpeningMessageStudentId,
+  ] = useState<number | null>(null);
+
   const loadStudents = useCallback(async () => {
     if (
       !Number.isInteger(teacherId) ||
       teacherId <= 0
     ) {
       setGroups([]);
+      setStudentProfiles({});
       setLoading(false);
       setError(
         'Не удалось определить ID преподавателя'
@@ -172,7 +258,16 @@ export default function TeacherStudents() {
         )
       );
 
+      const profiles = await getUsersByIds(
+        loadedGroups.flatMap((groupItem) =>
+          groupItem.students.map(
+            (student) => student.user_id
+          )
+        )
+      );
+
       setGroups(loadedGroups);
+      setStudentProfiles(profiles);
 
       if (
         selectedGroupId !== null &&
@@ -190,6 +285,7 @@ export default function TeacherStudents() {
       );
 
       setGroups([]);
+      setStudentProfiles({});
       setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
@@ -230,6 +326,10 @@ export default function TeacherStudents() {
         studentMap.set(student.user_id, {
           student,
           groups: [groupItem.group],
+          profile:
+            studentProfiles[
+              student.user_id
+            ] ?? null,
         });
       });
     });
@@ -237,13 +337,22 @@ export default function TeacherStudents() {
     return Array.from(
       studentMap.values()
     ).sort((first, second) =>
-      getStudentName(first.student)
+      getStudentName(
+        first.student,
+        first.profile
+      )
         .localeCompare(
-          getStudentName(second.student),
+          getStudentName(
+            second.student,
+            second.profile
+          ),
           'ru'
         )
     );
-  }, [groups]);
+  }, [
+    groups,
+    studentProfiles,
+  ]);
 
   const filteredStudents = useMemo(() => {
     const normalizedSearch =
@@ -265,23 +374,48 @@ export default function TeacherStudents() {
         return true;
       }
 
-      const studentName =
-        getStudentName(item.student)
-          .toLowerCase();
+      const surname =
+        item.profile?.first_name ??
+        item.student.first_name ??
+        '';
 
-      const studentId =
-        String(item.student.user_id);
+      const firstName =
+        item.profile?.user_name ??
+        item.student.user_name ??
+        '';
 
-      const groupNames =
-        item.groups
-          .map((group) => group.name)
-          .join(' ')
-          .toLowerCase();
+      const additionalName =
+        item.profile?.last_name ??
+        item.student.last_name ??
+        '';
+
+      const searchableName = [
+        surname,
+        firstName,
+        additionalName,
+        `${surname} ${firstName}`,
+        `${firstName} ${surname}`,
+      ]
+        .map((value) =>
+          value.trim().toLowerCase()
+        )
+        .filter(Boolean)
+        .join(' ');
+
+      const phone =
+        item.profile?.phone_number ?? '';
+
+      const normalizedPhoneQuery =
+        normalizePhone(searchQuery);
 
       return (
-        studentName.includes(normalizedSearch) ||
-        studentId.includes(normalizedSearch) ||
-        groupNames.includes(normalizedSearch)
+        searchableName.includes(
+          normalizedSearch
+        ) ||
+        (normalizedPhoneQuery.length > 0 &&
+          normalizePhone(phone).includes(
+            normalizedPhoneQuery
+          ))
       );
     });
   }, [
@@ -301,6 +435,143 @@ export default function TeacherStudents() {
       selectedGroupId,
     ]
   );
+
+  useEffect(() => {
+    if (!selectedStudent) {
+      return;
+    }
+
+    const handleKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      if (
+        event.key === 'Escape' &&
+        openingMessageStudentId === null
+      ) {
+        setSelectedStudent(null);
+        setSelectedStudentProfile(null);
+        setProfileError(null);
+      }
+    };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [
+    openingMessageStudentId,
+    selectedStudent,
+  ]);
+
+  const openStudentProfile = useCallback(
+    async (studentItem: TeacherStudentItem) => {
+      setSelectedStudent(studentItem);
+      setSelectedStudentProfile(
+        studentItem.profile
+      );
+      setProfileError(null);
+
+      if (studentItem.profile) {
+        setIsProfileLoading(false);
+        return;
+      }
+
+      setIsProfileLoading(true);
+
+      try {
+        const profile = await getUserById(
+          studentItem.student.user_id
+        );
+
+        setSelectedStudentProfile(profile);
+      } catch (loadProfileError) {
+        setProfileError(
+          loadProfileError instanceof Error
+            ? loadProfileError.message
+            : 'Не удалось загрузить профиль студента'
+        );
+      } finally {
+        setIsProfileLoading(false);
+      }
+    },
+    []
+  );
+
+  const openStudentMessage = useCallback(
+    async (studentItem: TeacherStudentItem) => {
+      if (
+        !user?.id ||
+        openingMessageStudentId !== null
+      ) {
+        return;
+      }
+
+      const studentId =
+        studentItem.student.user_id;
+
+      setOpeningMessageStudentId(studentId);
+      setActionError(null);
+
+      const target: MessageDirectoryPerson = {
+        userId: studentId,
+        displayName: getStudentName(
+          studentItem.student,
+          studentItem.profile
+        ),
+        avatarUrl:
+          studentItem.profile?.avatar_url ??
+          studentItem.student.avatar_url,
+        role: 'student',
+      };
+
+      try {
+        const chatsResponse = await getChats(
+          user.id
+        );
+
+        const privateChat =
+          await openOrCreatePrivateChat(
+            chatsResponse.items,
+            user.id,
+            target
+          );
+
+        navigate(
+          `/dashboard/messages?chatId=${privateChat.id}`
+        );
+      } catch (messageError) {
+        setActionError(
+          messageError instanceof Error
+            ? messageError.message
+            : 'Не удалось открыть чат со студентом'
+        );
+      } finally {
+        setOpeningMessageStudentId(null);
+      }
+    },
+    [
+      navigate,
+      openingMessageStudentId,
+      user?.id,
+    ]
+  );
+
+  const closeStudentProfile = () => {
+    if (openingMessageStudentId !== null) {
+      return;
+    }
+
+    setSelectedStudent(null);
+    setSelectedStudentProfile(null);
+    setProfileError(null);
+  };
 
   if (loading) {
     return (
@@ -328,15 +599,6 @@ export default function TeacherStudents() {
             Все студенты из ваших учебных групп
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadStudents()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Обновить
-        </button>
       </div>
 
       {error && (
@@ -355,6 +617,22 @@ export default function TeacherStudents() {
         </div>
       )}
 
+      {actionError && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+          <div>
+            <p className="font-medium">
+              Не удалось открыть сообщение
+            </p>
+
+            <p className="mt-1 text-sm">
+              {actionError}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-4">
@@ -368,7 +646,7 @@ export default function TeacherStudents() {
               </p>
 
               <p className="text-sm text-gray-500">
-                Уникальных студентов
+                Мои студенты
               </p>
             </div>
           </div>
@@ -410,7 +688,7 @@ export default function TeacherStudents() {
                   event.target.value
                 )
               }
-              placeholder="Имя, ID или название группы"
+              placeholder="Фамилия, имя или телефон"
               className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-red-400 focus:ring-2 focus:ring-red-100"
             />
           </div>
@@ -498,53 +776,125 @@ export default function TeacherStudents() {
             </div>
           </div>
 
-          <div className="divide-y divide-gray-100">
-            {filteredStudents.map(
-              (studentItem, index) => (
-                <div
-                  key={studentItem.student.user_id}
-                  className="p-5"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: '1080px' }}>
+              <div
+                className="border-b border-gray-100 bg-gray-50/70 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'minmax(250px, 1.15fr) minmax(220px, 0.9fr) minmax(260px, 1.1fr) minmax(245px, auto)',
+                  alignItems: 'center',
+                  columnGap: '24px',
+                }}
+              >
+                <span>Студент</span>
+                <span>Информация</span>
+                <span>Группы</span>
+                <span className="text-right">
+                  Действия
+                </span>
+              </div>
+
+              <div className="max-h-[720px] divide-y divide-gray-100 overflow-y-auto">
+                {filteredStudents.map(
+                  (studentItem) => {
+                const studentName =
+                  getStudentName(
+                    studentItem.student,
+                    studentItem.profile
+                  );
+
+                const phone =
+                  studentItem.profile
+                    ?.phone_number ||
+                  'Телефон не указан';
+
+                const email =
+                  studentItem.profile?.email ||
+                  'Почта не указана';
+
+                const isOpeningMessage =
+                  openingMessageStudentId ===
+                  studentItem.student.user_id;
+
+                return (
+                    <div
+                      key={
+                        studentItem.student
+                          .user_id
+                      }
+                      className="min-h-[72px] px-5 py-3 transition hover:bg-gray-50"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns:
+                          'minmax(250px, 1.15fr) minmax(220px, 0.9fr) minmax(260px, 1.1fr) minmax(245px, auto)',
+                        alignItems: 'center',
+                        columnGap: '24px',
+                      }}
+                    >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void openStudentProfile(
+                          studentItem
+                        )
+                      }
+                      className="flex min-w-0 items-center gap-3 rounded-lg text-left outline-none transition hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-200"
+                      title="Открыть профиль студента"
+                    >
                       <UserAvatar
                         avatarUrl={
+                          studentItem.profile
+                            ?.avatar_url ??
                           studentItem.student
                             .avatar_url
                         }
-                        alt={getStudentName(
-                          studentItem.student
-                        )}
+                        alt={studentName}
                         className="h-11 w-11 shrink-0 rounded-full object-cover"
                       />
 
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-gray-900">
-                          {index + 1}.{' '}
-                          {getStudentName(
-                            studentItem.student
-                          )}
+                          {studentName}
                         </p>
 
-                        <p className="mt-1 text-xs text-gray-400">
-                          ID пользователя:{' '}
-                          {studentItem.student.user_id}
+                        <p className="mt-0.5 text-xs text-red-500">
+                          Открыть профиль
                         </p>
                       </div>
-                    </div>
+                    </button>
 
-                    <div className="flex flex-1 flex-wrap gap-2">
-                      {studentItem.groups.map((group) => (
-                        <span
-                          key={group.id}
-                          className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
-                        >
-                          {group.name}
+                    <div className="min-w-0 space-y-1 text-sm text-gray-600">
+                      <p className="flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                        <span className="truncate">
+                          {phone}
                         </span>
-                      ))}
+                      </p>
+
+                      <p className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                        <span className="truncate">
+                          {email}
+                        </span>
+                      </p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      {studentItem.groups.map(
+                        (group) => (
+                          <span
+                            key={group.id}
+                            className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
+                          >
+                            {group.name}
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
                         onClick={() =>
@@ -552,7 +902,7 @@ export default function TeacherStudents() {
                             `/dashboard/attendance?groupId=${studentItem.groups[0]?.id ?? ''}`
                           )
                         }
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
                       >
                         <CheckCircle2 className="h-4 w-4" />
                         Журнал
@@ -561,22 +911,65 @@ export default function TeacherStudents() {
                       <button
                         type="button"
                         onClick={() =>
-                          navigate(
-                            `/dashboard/groups`
+                          void openStudentMessage(
+                            studentItem
                           )
                         }
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                        disabled={
+                          openingMessageStudentId !==
+                          null
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
                       >
-                        <Users className="h-4 w-4" />
-                        Группы
+                        {isOpeningMessage ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4" />
+                        )}
+                        Сообщение
                       </button>
                     </div>
-                  </div>
-                </div>
-              )
-            )}
+                    </div>
+                  );
+                }
+              )}
+              </div>
+            </div>
           </div>
         </div>
+      )}
+
+      {selectedStudent && (
+        <TeacherStudentProfileModal
+          isOpen
+          isLoading={isProfileLoading}
+          isOpeningMessage={
+            openingMessageStudentId ===
+            selectedStudent.student.user_id
+          }
+          error={profileError}
+          studentName={getStudentName(
+            selectedStudent.student,
+            selectedStudentProfile ??
+              selectedStudent.profile
+          )}
+          studentAvatarUrl={
+            selectedStudent.profile
+              ?.avatar_url ??
+            selectedStudent.student
+              .avatar_url
+          }
+          groupName={selectedStudent.groups
+            .map((group) => group.name)
+            .join(', ')}
+          profile={selectedStudentProfile}
+          onClose={closeStudentProfile}
+          onMessage={() =>
+            void openStudentMessage(
+              selectedStudent
+            )
+          }
+        />
       )}
     </div>
   );
