@@ -8,7 +8,6 @@ import {
   Loader2,
   MessageSquareText,
   Newspaper,
-  RefreshCw,
   Settings,
 } from 'lucide-react';
 
@@ -319,9 +318,6 @@ export default function Notifications() {
   const [isLoading, setIsLoading] =
     useState(true);
 
-  const [isRefreshing, setIsRefreshing] =
-    useState(false);
-
   const [isMarkingAll, setIsMarkingAll] =
     useState(false);
 
@@ -345,9 +341,7 @@ export default function Notifications() {
         return;
       }
 
-      if (background) {
-        setIsRefreshing(true);
-      } else {
+      if (!background) {
         setIsLoading(true);
       }
 
@@ -374,7 +368,6 @@ export default function Notifications() {
         );
       } finally {
         setIsLoading(false);
-        setIsRefreshing(false);
       }
     },
     [user?.id]
