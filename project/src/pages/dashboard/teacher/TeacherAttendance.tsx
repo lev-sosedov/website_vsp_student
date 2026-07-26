@@ -9,11 +9,9 @@ import {
   AlertCircle,
   CalendarDays,
   Check,
-  CheckCircle2,
   ChevronDown,
   Clock3,
   Loader2,
-  RotateCcw,
   Save,
   Users,
 } from 'lucide-react';
@@ -138,23 +136,20 @@ function formatTime(
 function getStudentName(
   student: GroupStudent
 ): string {
-  const fullName = [
-    student.last_name,
+  const nameParts = [
     student.first_name,
+    student.user_name,
   ]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+    .map((part) => part?.trim())
+    .filter(
+      (part): part is string =>
+        Boolean(part)
+    );
 
-  if (fullName) {
-    return fullName;
-  }
-
-  if (student.user_name?.trim()) {
-    return student.user_name.trim();
-  }
-
-  return `Студент №${student.user_id}`;
+  return (
+    nameParts.join(' ') ||
+    'Имя студента не указано'
+  );
 }
 
 function createEmptyAttendanceState():
@@ -215,6 +210,11 @@ export default function TeacherAttendance() {
   const [
     attendanceState,
     setAttendanceState,
+  ] = useState<AttendanceStateMap>({});
+
+  const [
+    savedAttendanceState,
+    setSavedAttendanceState,
   ] = useState<AttendanceStateMap>({});
 
   const [
@@ -291,6 +291,51 @@ export default function TeacherAttendance() {
     students,
     attendanceState,
   ]);
+
+  const hasUnsavedChanges = useMemo(
+    () =>
+      students.some((student) => {
+        const currentState =
+          attendanceState[student.user_id] ??
+          createEmptyAttendanceState();
+
+        const savedState =
+          savedAttendanceState[
+            student.user_id
+          ];
+
+        if (
+          !currentState.attendanceId ||
+          !savedState
+        ) {
+          return true;
+        }
+
+        const currentLateMinutes =
+          currentState.status === 'late'
+            ? currentState.lateMinutes
+            : 0;
+
+        const savedLateMinutes =
+          savedState.status === 'late'
+            ? savedState.lateMinutes
+            : 0;
+
+        return (
+          currentState.status !==
+            savedState.status ||
+          currentLateMinutes !==
+            savedLateMinutes ||
+          currentState.comment.trim() !==
+            savedState.comment.trim()
+        );
+      }),
+    [
+      attendanceState,
+      savedAttendanceState,
+      students,
+    ]
+  );
 
   const loadTeacherGroups =
     useCallback(async () => {
@@ -417,6 +462,7 @@ export default function TeacherAttendance() {
       setStudents([]);
       setSelectedLessonId(null);
       setAttendanceState({});
+      setSavedAttendanceState({});
       return;
     }
 
@@ -472,6 +518,7 @@ export default function TeacherAttendance() {
         } else {
           setSelectedLessonId(null);
           setAttendanceState({});
+          setSavedAttendanceState({});
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -485,6 +532,7 @@ export default function TeacherAttendance() {
           setStudents([]);
           setSelectedLessonId(null);
           setAttendanceState({});
+          setSavedAttendanceState({});
         }
       } finally {
         if (!cancelled) {
@@ -506,6 +554,7 @@ export default function TeacherAttendance() {
       students.length === 0
     ) {
       setAttendanceState({});
+      setSavedAttendanceState({});
       return;
     }
 
@@ -561,6 +610,7 @@ export default function TeacherAttendance() {
         });
 
         setAttendanceState(nextState);
+        setSavedAttendanceState(nextState);
       } catch (loadError) {
         if (!cancelled) {
           setError(
@@ -614,59 +664,6 @@ export default function TeacherAttendance() {
           ...currentState,
           [studentId]: nextStudentState,
         };
-      }
-    );
-  }
-
-  function markEveryonePresent() {
-    setSuccessMessage(null);
-
-    setAttendanceState(
-      (currentState) => {
-        const nextState = {
-          ...currentState,
-        };
-
-        students.forEach((student) => {
-          const currentStudentState =
-            nextState[student.user_id] ??
-            createEmptyAttendanceState();
-
-          nextState[student.user_id] = {
-            ...currentStudentState,
-            status: 'present',
-            lateMinutes: 0,
-          };
-        });
-
-        return nextState;
-      }
-    );
-  }
-
-  function resetJournal() {
-    setSuccessMessage(null);
-
-    setAttendanceState(
-      (currentState) => {
-        const nextState = {
-          ...currentState,
-        };
-
-        students.forEach((student) => {
-          const currentStudentState =
-            nextState[student.user_id] ??
-            createEmptyAttendanceState();
-
-          nextState[student.user_id] = {
-            ...currentStudentState,
-            status: 'present',
-            lateMinutes: 0,
-            comment: '',
-          };
-        });
-
-        return nextState;
       }
     );
   }
@@ -751,6 +748,7 @@ export default function TeacherAttendance() {
       });
 
       setAttendanceState(nextState);
+      setSavedAttendanceState(nextState);
 
       setSuccessMessage(
         'Посещаемость успешно сохранена'
@@ -782,7 +780,7 @@ export default function TeacherAttendance() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Журнал посещаемости
@@ -793,34 +791,6 @@ export default function TeacherAttendance() {
             затем отметьте присутствие студентов.
           </p>
         </div>
-
-        {students.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={markEveryonePresent}
-              disabled={
-                loadingJournal || saving
-              }
-              className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Все присутствуют
-            </button>
-
-            <button
-              type="button"
-              onClick={resetJournal}
-              disabled={
-                loadingJournal || saving
-              }
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Сбросить
-            </button>
-          </div>
-        )}
       </div>
 
       {error && (
@@ -863,6 +833,7 @@ export default function TeacherAttendance() {
                 setLessons([]);
                 setStudents([]);
                 setAttendanceState({});
+                setSavedAttendanceState({});
                 setSuccessMessage(null);
 
                 if (nextGroupId) {
@@ -1096,7 +1067,10 @@ export default function TeacherAttendance() {
             </div>
           </div>
 
-          <div className="divide-y divide-gray-100">
+          <div
+            className="divide-y divide-gray-100 overflow-y-auto"
+            style={{ maxHeight: '600px' }}
+          >
             {students.map(
               (student, index) => {
                 const studentState =
@@ -1111,7 +1085,7 @@ export default function TeacherAttendance() {
                     className="p-5"
                   >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-                      <div className="flex min-w-0 items-center gap-3 xl:w-64">
+                      <div className="flex min-w-0 items-start gap-3 xl:w-72">
                         <UserAvatar
                           avatarUrl={
                             student.avatar_url
@@ -1120,17 +1094,12 @@ export default function TeacherAttendance() {
                           className="h-10 w-10 shrink-0 rounded-full object-cover"
                         />
 
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-gray-900">
+                        <div className="min-w-0 flex-1">
+                          <p className="whitespace-normal break-words font-medium leading-5 text-gray-900">
                             {index + 1}.{' '}
                             {getStudentName(
                               student
                             )}
-                          </p>
-
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            ID пользователя:{' '}
-                            {student.user_id}
                           </p>
                         </div>
                       </div>
@@ -1174,7 +1143,7 @@ export default function TeacherAttendance() {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 xl:ml-[268px] xl:grid-cols-[180px_1fr]">
+                    <div className="mt-4 grid gap-3 xl:ml-[300px] xl:grid-cols-[180px_1fr]">
                       {studentState.status ===
                         'late' && (
                         <label className="space-y-1.5">
@@ -1251,9 +1220,16 @@ export default function TeacherAttendance() {
           </div>
 
           <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-gray-500">
-              При повторном сохранении существующие
-              отметки будут обновлены.
+            <p
+              className={`text-sm ${
+                hasUnsavedChanges
+                  ? 'font-medium text-amber-700'
+                  : 'text-gray-500'
+              }`}
+            >
+              {hasUnsavedChanges
+                ? 'Есть несохранённые изменения'
+                : 'Все изменения сохранены'}
             </p>
 
             <button
@@ -1264,14 +1240,24 @@ export default function TeacherAttendance() {
               disabled={
                 saving ||
                 !selectedLessonId ||
-                students.length === 0
+                students.length === 0 ||
+                !hasUnsavedChanges
               }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+              className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
+                hasUnsavedChanges
+                  ? 'bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:bg-red-300'
+                  : 'cursor-not-allowed bg-gray-200 text-gray-500'
+              }`}
             >
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Сохраняем...
+                </>
+              ) : !hasUnsavedChanges ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Посещаемость сохранена
                 </>
               ) : (
                 <>

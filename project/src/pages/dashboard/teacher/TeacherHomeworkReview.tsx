@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   AlertCircle,
   CheckCircle2,
   Clock3,
   FileCheck2,
   Loader2,
-  RefreshCw,
   RotateCcw,
   Search,
   XCircle,
@@ -24,12 +28,17 @@ import {
   type HomeworkSubmission,
   type HomeworkSubmissionStatus,
 } from '../../../api/homeworkApi';
+import {
+  getUsersByIds,
+  type UserProfile,
+} from '../../../api/userApi';
 
 type FilterStatus = 'all' | HomeworkSubmissionStatus;
 
 interface SubmissionWithHomework {
   submission: HomeworkSubmission;
   homework: Homework | null;
+  student: UserProfile | null;
 }
 
 const statusLabels: Record<HomeworkSubmissionStatus, string> = {
@@ -61,6 +70,34 @@ function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+function getStudentName(
+  student: UserProfile | null
+): string {
+  if (!student) {
+    return 'Имя студента не указано';
+  }
+
+  const nameParts = [
+    student.first_name,
+    student.user_name,
+    student.last_name,
+  ]
+    .map((part) => part?.trim())
+    .filter(
+      (part): part is string =>
+        Boolean(part)
+    );
+
+  return (
+    nameParts.join(' ') ||
+    'Имя студента не указано'
+  );
+}
+
+function normalizePhone(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
 export default function TeacherHomeworkReview() {
   const { user } = useAuth();
 
@@ -79,7 +116,7 @@ export default function TeacherHomeworkReview() {
 
   const teacherId = user?.id;
 
-  async function loadSubmissions() {
+  const loadSubmissions = useCallback(async () => {
     if (!teacherId) {
       setItems([]);
       setLoading(false);
@@ -128,6 +165,7 @@ export default function TeacherHomeworkReview() {
           submission,
           homework:
             homeworkMap.get(submission.homework_id) ?? null,
+          student: null,
         }))
         .filter(
           ({ homework }) =>
@@ -135,7 +173,23 @@ export default function TeacherHomeworkReview() {
             homework.created_by === teacherId
         );
 
-      setItems(teacherItems);
+      const studentProfiles =
+        await getUsersByIds(
+          teacherItems.map(
+            ({ submission }) =>
+              submission.student_id
+          )
+        );
+
+      setItems(
+        teacherItems.map((item) => ({
+          ...item,
+          student:
+            studentProfiles[
+              item.submission.student_id
+            ] ?? null,
+        }))
+      );
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -145,7 +199,7 @@ export default function TeacherHomeworkReview() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [teacherId]);
 
   useEffect(() => {
     if (teacherId) {
@@ -154,7 +208,7 @@ export default function TeacherHomeworkReview() {
       setItems([]);
       setLoading(false);
     }
-  }, [teacherId]);
+  }, [loadSubmissions, teacherId]);
 
   const counters = useMemo(() => {
     return {
@@ -190,7 +244,10 @@ export default function TeacherHomeworkReview() {
       .trim()
       .toLowerCase();
 
-    return items.filter(({ submission, homework }) => {
+    const normalizedPhone =
+      normalizePhone(normalizedSearch);
+
+    return items.filter(({ submission, student }) => {
       if (
         statusFilter !== 'all' &&
         submission.status !== statusFilter
@@ -202,19 +259,38 @@ export default function TeacherHomeworkReview() {
         return true;
       }
 
-      return [
-        homework?.title,
-        homework?.description,
-        submission.answer_text,
-        String(submission.student_id),
-        String(submission.id),
+      const nameParts = [
+        student?.first_name,
+        student?.user_name,
+        student?.last_name,
       ]
         .filter(Boolean)
-        .some((value) =>
-          String(value)
-            .toLowerCase()
-            .includes(normalizedSearch)
+        .map((value) =>
+          String(value).trim().toLowerCase()
         );
+
+      const fullNames = [
+        nameParts.join(' '),
+        [...nameParts].reverse().join(' '),
+      ];
+
+      const matchesName =
+        nameParts.some((value) =>
+          value.includes(normalizedSearch)
+        ) ||
+        fullNames.some((value) =>
+          value.includes(normalizedSearch)
+        );
+
+      const studentPhone = normalizePhone(
+        student?.phone_number ?? ''
+      );
+
+      const matchesPhone =
+        normalizedPhone.length > 0 &&
+        studentPhone.includes(normalizedPhone);
+
+      return matchesName || matchesPhone;
     });
   }, [items, search, statusFilter]);
 
@@ -414,7 +490,7 @@ export default function TeacherHomeworkReview() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Проверка домашних работ
@@ -424,26 +500,6 @@ export default function TeacherHomeworkReview() {
             Работы студентов и результаты проверки
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadSubmissions()}
-          disabled={loading}
-          className="
-            inline-flex h-10 items-center justify-center gap-2
-            rounded-xl border border-gray-200 bg-white px-4
-            text-sm font-medium text-gray-700
-            transition hover:bg-gray-50
-            disabled:cursor-not-allowed disabled:opacity-60
-          "
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${
-              loading ? 'animate-spin' : ''
-            }`}
-          />
-          Обновить
-        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -488,7 +544,7 @@ export default function TeacherHomeworkReview() {
               onChange={(event) =>
                 setSearch(event.target.value)
               }
-              placeholder="Поиск по заданию, ответу или ID студента"
+              placeholder="Фамилия, имя или телефон студента"
               className="
                 h-11 w-full rounded-xl border border-gray-200
                 bg-white pl-10 pr-4 text-sm outline-none
@@ -552,16 +608,26 @@ export default function TeacherHomeworkReview() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div
+            className="space-y-3 overflow-y-auto pr-2"
+            style={{ maxHeight: '700px' }}
+          >
             {filteredItems.map((item) => {
-              const { submission, homework } = item;
+              const {
+                submission,
+                homework,
+                student,
+              } = item;
+
+              const studentName =
+                getStudentName(student);
 
               return (
                 <div
                   key={submission.id}
                   className="
                     rounded-2xl border border-gray-100
-                    bg-white p-5 transition
+                    bg-white p-4 transition
                     hover:border-red-100 hover:shadow-sm
                   "
                 >
@@ -591,12 +657,8 @@ export default function TeacherHomeworkReview() {
                       </div>
 
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
-                        <span>
-                          Студент ID: {submission.student_id}
-                        </span>
-
-                        <span>
-                          Работа ID: {submission.id}
+                        <span className="font-medium text-gray-700">
+                          {studentName}
                         </span>
 
                         <span>
@@ -608,24 +670,24 @@ export default function TeacherHomeworkReview() {
                       </div>
 
                       {submission.answer_text && (
-                        <div className="mt-4 rounded-xl bg-gray-50 p-4">
+                        <div className="mt-3 rounded-xl bg-gray-50 p-3">
                           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
                             Ответ студента
                           </p>
 
-                          <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                          <p className="max-h-12 overflow-hidden whitespace-pre-wrap text-sm leading-6 text-gray-700">
                             {submission.answer_text}
                           </p>
                         </div>
                       )}
 
                       {submission.teacher_comment && (
-                        <div className="mt-3 rounded-xl border border-gray-100 p-4">
+                        <div className="mt-3 rounded-xl border border-gray-100 p-3">
                           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
                             Комментарий преподавателя
                           </p>
 
-                          <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                          <p className="max-h-12 overflow-hidden whitespace-pre-wrap text-sm leading-6 text-gray-700">
                             {submission.teacher_comment}
                           </p>
                         </div>
@@ -707,6 +769,12 @@ export default function TeacherHomeworkReview() {
                 <p className="mt-1 text-sm text-gray-500">
                   {selectedItem.homework?.title ??
                     `Домашнее задание №${selectedItem.submission.homework_id}`}
+                </p>
+
+                <p className="mt-1 text-sm font-medium text-gray-700">
+                  {getStudentName(
+                    selectedItem.student
+                  )}
                 </p>
               </div>
 
