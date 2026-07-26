@@ -40,6 +40,7 @@ import TeacherMaterials from '../pages/dashboard/teacher/TeacherMaterials';
 import TeacherSchedule from '../pages/dashboard/teacher/TeacherSchedule';
 import AdminDashboard from '../pages/dashboard/admin/AdminDashboard';
 import AdminStudents from '../pages/dashboard/admin/AdminStudents';
+import AdminTeachers from '../pages/dashboard/admin/AdminTeachers';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -436,7 +437,11 @@ export default function DashboardRouter() {
 
         <Route
           path="teachers"
-          element={<Progress />}
+          element={
+            currentRole === 'admin'
+              ? <AdminTeachers />
+              : <Progress />
+          }
         />
 
         <Route

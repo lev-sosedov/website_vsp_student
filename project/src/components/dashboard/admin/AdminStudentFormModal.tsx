@@ -26,6 +26,8 @@ export interface AdminStudentFormValues {
 interface AdminStudentFormModalProps {
   isOpen: boolean;
   student: UserProfile | null;
+  entityLabel?: string;
+  aboutLabel?: string;
   isSaving: boolean;
   error: string | null;
   onClose: () => void;
@@ -47,6 +49,8 @@ const EMPTY_FORM: AdminStudentFormValues = {
 export default function AdminStudentFormModal({
   isOpen,
   student,
+  entityLabel = 'студента',
+  aboutLabel = 'О студенте',
   isSaving,
   error,
   onClose,
@@ -115,8 +119,8 @@ export default function AdminStudentFormModal({
           <div>
             <h2 className="text-lg font-bold text-gray-900">
               {student
-                ? 'Изменить студента'
-                : 'Создать студента'}
+                ? `Изменить ${entityLabel}`
+                : `Создать ${entityLabel}`}
             </h2>
 
             <p className="mt-0.5 text-xs text-gray-500">
@@ -246,7 +250,7 @@ export default function AdminStudentFormModal({
 
           <label className="mt-4 block">
             <span className="text-sm font-medium text-gray-700">
-              О студенте
+              {aboutLabel}
             </span>
             <textarea
               value={form.about}
@@ -263,7 +267,7 @@ export default function AdminStudentFormModal({
 
           {!student && (
             <p className="mt-4 rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
-              Здесь создаётся профиль студента.
+              Здесь создаётся профиль {entityLabel}.
               Пароль и данные входа управляются
               через Auth Service.
             </p>
@@ -295,7 +299,7 @@ export default function AdminStudentFormModal({
               )}
               {student
                 ? 'Сохранить изменения'
-                : 'Создать студента'}
+                : `Создать ${entityLabel}`}
             </button>
           </div>
         </form>

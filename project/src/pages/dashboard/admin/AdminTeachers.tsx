@@ -1,8 +1,9 @@
 import {
   AlertCircle,
   CheckCircle2,
+  GraduationCap,
   Loader2,
-  MessageCircle,
+  MessageSquare,
   Phone,
   Plus,
   Search,
@@ -19,7 +20,9 @@ import {
   useState,
 } from 'react';
 
-import { useNavigate } from 'react-router-dom';
+import {
+  useNavigate,
+} from 'react-router-dom';
 
 import {
   activateUser,
@@ -40,11 +43,11 @@ import AdminStudentFormModal, {
 } from '../../../components/dashboard/admin/AdminStudentFormModal';
 
 import {
-  getAdminStudentName,
-  loadAdminStudents,
-  type AdminStudentItem,
-  type AdminStudentStudyInfo,
-} from '../../../services/adminStudentsService';
+  getAdminTeacherName,
+  loadAdminTeachers,
+  type AdminTeacherAssignmentInfo,
+  type AdminTeacherItem,
+} from '../../../services/adminTeachersService';
 
 interface FilterOption {
   value: string;
@@ -75,38 +78,25 @@ function formatCreatedDate(
   }).format(date);
 }
 
-function isCreatedThisMonth(
-  profile: UserProfile
-): boolean {
-  const createdAt = new Date(
-    profile.created_at
-  );
-  const now = new Date();
-
-  return (
-    !Number.isNaN(createdAt.getTime()) &&
-    createdAt.getFullYear() ===
-      now.getFullYear() &&
-    createdAt.getMonth() === now.getMonth()
-  );
-}
-
 function createFilterOptions(
-  studyItems: AdminStudentStudyInfo[],
+  assignments: AdminTeacherAssignmentInfo[],
   idSelector: (
-    item: AdminStudentStudyInfo
+    assignment: AdminTeacherAssignmentInfo
   ) => number | null,
   labelSelector: (
-    item: AdminStudentStudyInfo
+    assignment: AdminTeacherAssignmentInfo
   ) => string
 ): FilterOption[] {
   const values = new Map<number, string>();
 
-  studyItems.forEach((item) => {
-    const id = idSelector(item);
+  assignments.forEach((assignment) => {
+    const id = idSelector(assignment);
 
     if (id) {
-      values.set(id, labelSelector(item));
+      values.set(
+        id,
+        labelSelector(assignment)
+      );
     }
   });
 
@@ -152,11 +142,11 @@ function StatusBadges({
   );
 }
 
-export default function AdminStudents() {
+export default function AdminTeachers() {
   const navigate = useNavigate();
 
-  const [students, setStudents] =
-    useState<AdminStudentItem[]>([]);
+  const [teachers, setTeachers] =
+    useState<AdminTeacherItem[]>([]);
   const [isLoading, setIsLoading] =
     useState(true);
   const [error, setError] =
@@ -172,25 +162,21 @@ export default function AdminStudents() {
     directionFilter,
     setDirectionFilter,
   ] = useState('all');
-  const [
-    educationPlanFilter,
-    setEducationPlanFilter,
-  ] = useState('all');
   const [groupFilter, setGroupFilter] =
     useState('all');
 
   const [
-    selectedStudent,
-    setSelectedStudent,
-  ] = useState<AdminStudentItem | null>(
+    selectedTeacher,
+    setSelectedTeacher,
+  ] = useState<AdminTeacherItem | null>(
     null
   );
 
   const [isFormOpen, setIsFormOpen] =
     useState(false);
   const [
-    editingStudent,
-    setEditingStudent,
+    editingTeacher,
+    setEditingTeacher,
   ] = useState<UserProfile | null>(null);
   const [isSaving, setIsSaving] =
     useState(false);
@@ -200,8 +186,7 @@ export default function AdminStudents() {
     useState<string | null>(null);
   const [actionError, setActionError] =
     useState<string | null>(null);
-
-  const loadStudents = useCallback(
+  const loadTeachers = useCallback(
     async (background = false) => {
       if (!background) {
         setIsLoading(true);
@@ -210,13 +195,13 @@ export default function AdminStudents() {
       setError(null);
 
       try {
-        const loadedStudents =
-          await loadAdminStudents();
+        const loadedTeachers =
+          await loadAdminTeachers();
 
-        setStudents(loadedStudents);
-        setSelectedStudent((current) =>
+        setTeachers(loadedTeachers);
+        setSelectedTeacher((current) =>
           current
-            ? loadedStudents.find(
+            ? loadedTeachers.find(
                 (item) =>
                   item.profile.id ===
                   current.profile.id
@@ -224,7 +209,7 @@ export default function AdminStudents() {
             : null
         );
 
-        return loadedStudents;
+        return loadedTeachers;
       } catch (loadError) {
         setError(getErrorMessage(loadError));
         return [];
@@ -236,8 +221,8 @@ export default function AdminStudents() {
   );
 
   useEffect(() => {
-    void loadStudents();
-  }, [loadStudents]);
+    void loadTeachers();
+  }, [loadTeachers]);
 
   useEffect(() => {
     if (!successMessage) {
@@ -253,70 +238,67 @@ export default function AdminStudents() {
       window.clearTimeout(timerId);
   }, [successMessage]);
 
-  const allStudyItems = useMemo(
+  const allAssignments = useMemo(
     () =>
-      students.flatMap(
-        (student) => student.study
+      teachers.flatMap(
+        (teacher) => teacher.study
       ),
-    [students]
+    [teachers]
   );
 
   const branchOptions = useMemo(
     () =>
       createFilterOptions(
-        allStudyItems,
-        (item) => item.branchId,
-        (item) => item.branchName
+        allAssignments,
+        (assignment) =>
+          assignment.branchId,
+        (assignment) =>
+          assignment.branchName
       ),
-    [allStudyItems]
+    [allAssignments]
   );
 
   const directionOptions = useMemo(
     () =>
       createFilterOptions(
-        allStudyItems,
-        (item) => item.directionId,
-        (item) => item.directionName
+        allAssignments,
+        (assignment) =>
+          assignment.directionId,
+        (assignment) =>
+          assignment.directionName
       ),
-    [allStudyItems]
-  );
-
-  const educationPlanOptions = useMemo(
-    () =>
-      createFilterOptions(
-        allStudyItems,
-        (item) => item.educationPlanId,
-        (item) => item.educationPlanName
-      ),
-    [allStudyItems]
+    [allAssignments]
   );
 
   const groupOptions = useMemo(
     () =>
       createFilterOptions(
-        allStudyItems,
-        (item) => item.groupId,
-        (item) => item.groupName
+        allAssignments,
+        (assignment) =>
+          assignment.groupId,
+        (assignment) =>
+          assignment.groupName
       ),
-    [allStudyItems]
+    [allAssignments]
   );
 
-  const filteredStudents = useMemo(() => {
+  const filteredTeachers = useMemo(() => {
     const normalizedSearch =
       searchValue.trim().toLowerCase();
 
-    return students.filter((student) => {
-      const profile = student.profile;
+    return teachers.filter((teacher) => {
+      const profile = teacher.profile;
       const searchableText = [
-        getAdminStudentName(profile),
+        getAdminTeacherName(profile),
         profile.phone_number,
         profile.email,
-        ...student.study.flatMap((study) => [
-          study.groupName,
-          study.branchName,
-          study.directionName,
-          study.educationPlanName,
-        ]),
+        ...teacher.study.flatMap(
+          (assignment) => [
+            assignment.groupName,
+            assignment.branchName,
+            assignment.directionName,
+          ]
+        ),
       ]
         .filter(Boolean)
         .join(' ')
@@ -324,93 +306,100 @@ export default function AdminStudents() {
 
       if (
         normalizedSearch &&
-        !searchableText.includes(normalizedSearch)
+        !searchableText.includes(
+          normalizedSearch
+        )
       ) {
         return false;
       }
 
-      const matchesStudyFilter = (
+      const matchesFilter = (
         filter: string,
         selector: (
-          study: AdminStudentStudyInfo
+          assignment: AdminTeacherAssignmentInfo
         ) => number | null
       ) =>
         filter === 'all' ||
         (filter === 'none'
-          ? student.study.length === 0
-          : student.study.some(
-              (study) =>
-                String(selector(study)) ===
-                filter
+          ? (
+              teacher.study.length === 0 ||
+              teacher.study.every(
+                (assignment) =>
+                  selector(assignment) === null
+              )
+            )
+          : teacher.study.some(
+              (assignment) =>
+                String(
+                  selector(assignment)
+                ) === filter
             ));
 
       return (
-        matchesStudyFilter(
+        matchesFilter(
           branchFilter,
-          (study) => study.branchId
+          (assignment) =>
+            assignment.branchId
         ) &&
-        matchesStudyFilter(
+        matchesFilter(
           directionFilter,
-          (study) => study.directionId
+          (assignment) =>
+            assignment.directionId
         ) &&
-        matchesStudyFilter(
-          educationPlanFilter,
-          (study) =>
-            study.educationPlanId
-        ) &&
-        matchesStudyFilter(
+        matchesFilter(
           groupFilter,
-          (study) => study.groupId
+          (assignment) =>
+            assignment.groupId
         )
       );
     });
   }, [
-    students,
+    teachers,
     searchValue,
     branchFilter,
     directionFilter,
-    educationPlanFilter,
     groupFilter,
   ]);
 
-  const activeStudentsCount = useMemo(
+  const activeTeachersCount = useMemo(
     () =>
-      students.filter(
-        (student) =>
-          student.profile.is_active
+      teachers.filter(
+        (teacher) =>
+          teacher.profile.is_active
       ).length,
-    [students]
+    [teachers]
   );
 
   const pendingVerificationCount = useMemo(
     () =>
-      students.filter(
-        (student) =>
-          !student.profile
+      teachers.filter(
+        (teacher) =>
+          !teacher.profile
             .is_account_verified ||
-          !student.profile.is_phone_verified
+          !teacher.profile.is_phone_verified
       ).length,
-    [students]
+    [teachers]
   );
 
-  const newStudentsCount = useMemo(
-    () =>
-      students.filter((student) =>
-        isCreatedThisMonth(student.profile)
-      ).length,
-    [students]
-  );
+  const teachersWithoutGroupsCount =
+    useMemo(
+      () =>
+        teachers.filter(
+          (teacher) =>
+            teacher.study.length === 0
+        ).length,
+      [teachers]
+    );
 
   const resetFilters = () => {
     setSearchValue('');
     setBranchFilter('all');
     setDirectionFilter('all');
-    setEducationPlanFilter('all');
     setGroupFilter('all');
   };
 
   const openCreateForm = () => {
-    setEditingStudent(null);
+    setEditingTeacher(null);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -418,8 +407,8 @@ export default function AdminStudents() {
   const openEditForm = (
     profile: UserProfile
   ) => {
-    setSelectedStudent(null);
-    setEditingStudent(profile);
+    setSelectedTeacher(null);
+    setEditingTeacher(profile);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -444,27 +433,27 @@ export default function AdminStudents() {
     };
 
     try {
-      if (editingStudent) {
+      if (editingTeacher) {
         await updateUserProfile(
-          editingStudent.id,
+          editingTeacher.id,
           data
         );
         setSuccessMessage(
-          'Данные студента обновлены'
+          'Данные преподавателя обновлены'
         );
       } else {
         await createUser({
           ...data,
-          role: 'student',
+          role: 'teacher',
         });
         setSuccessMessage(
-          'Профиль студента создан'
+          'Профиль преподавателя создан'
         );
       }
 
       setIsFormOpen(false);
-      setEditingStudent(null);
-      await loadStudents(true);
+      setEditingTeacher(null);
+      await loadTeachers(true);
     } catch (saveError) {
       setFormError(
         getErrorMessage(saveError)
@@ -474,12 +463,14 @@ export default function AdminStudents() {
     }
   };
 
-  const runStudentAction = async (
+  const runTeacherAction = async (
     actionName: string,
-    action: (userId: number) => Promise<unknown>,
+    action: (
+      userId: number
+    ) => Promise<unknown>,
     successText: string
   ) => {
-    if (!selectedStudent || activeAction) {
+    if (!selectedTeacher || activeAction) {
       return;
     }
 
@@ -487,8 +478,10 @@ export default function AdminStudents() {
     setActionError(null);
 
     try {
-      await action(selectedStudent.profile.id);
-      await loadStudents(true);
+      await action(
+        selectedTeacher.profile.id
+      );
+      await loadTeachers(true);
       setSuccessMessage(successText);
     } catch (requestError) {
       setActionError(
@@ -500,7 +493,7 @@ export default function AdminStudents() {
   };
 
   const handleDelete = async () => {
-    if (!selectedStudent || activeAction) {
+    if (!selectedTeacher || activeAction) {
       return;
     }
 
@@ -509,11 +502,13 @@ export default function AdminStudents() {
 
     try {
       await deleteUser(
-        selectedStudent.profile.id
+        selectedTeacher.profile.id
       );
-      setSelectedStudent(null);
-      await loadStudents(true);
-      setSuccessMessage('Студент удалён');
+      setSelectedTeacher(null);
+      await loadTeachers(true);
+      setSuccessMessage(
+        'Преподаватель удалён'
+      );
     } catch (deleteError) {
       setActionError(
         getErrorMessage(deleteError)
@@ -523,6 +518,22 @@ export default function AdminStudents() {
     }
   };
 
+  const openTeacherMessage = useCallback(
+    (teacher: AdminTeacherItem) => {
+      const query = new URLSearchParams({
+        contactUserId: String(
+          teacher.profile.id
+        ),
+        contactRole: 'teacher',
+      });
+
+      navigate(
+        `/dashboard/messages?${query.toString()}`
+      );
+    },
+    [navigate]
+  );
+
   const selectClassName =
     'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100';
 
@@ -530,7 +541,6 @@ export default function AdminStudents() {
     searchValue.trim() !== '' ||
     branchFilter !== 'all' ||
     directionFilter !== 'all' ||
-    educationPlanFilter !== 'all' ||
     groupFilter !== 'all';
 
   return (
@@ -538,11 +548,11 @@ export default function AdminStudents() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Студенты
+            Преподаватели
           </h1>
 
           <p className="mt-1 text-gray-500">
-            Пользователи, обучение и управление доступом
+            Сотрудники, группы и управление доступом
           </p>
         </div>
 
@@ -552,7 +562,7 @@ export default function AdminStudents() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
         >
           <Plus className="h-4 w-4" />
-          Создать студента
+          Создать преподавателя
         </button>
       </div>
 
@@ -568,7 +578,7 @@ export default function AdminStudents() {
           <button
             type="button"
             onClick={() =>
-              void loadStudents()
+              void loadTeachers()
             }
             className="text-sm font-semibold text-red-700"
           >
@@ -588,19 +598,19 @@ export default function AdminStudents() {
 
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <div className="stat-card">
-          <Users className="h-5 w-5 text-red-500" />
+          <GraduationCap className="h-5 w-5 text-red-500" />
           <p className="mt-3 text-2xl font-bold text-gray-900">
-            {students.length}
+            {teachers.length}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Всего студентов
+            Всего преподавателей
           </p>
         </div>
 
         <div className="stat-card">
           <UserCheck className="h-5 w-5 text-green-500" />
           <p className="mt-3 text-2xl font-bold text-gray-900">
-            {activeStudentsCount}
+            {activeTeachersCount}
           </p>
           <p className="mt-1 text-xs text-gray-500">
             Активных
@@ -618,19 +628,19 @@ export default function AdminStudents() {
         </div>
 
         <div className="stat-card">
-          <Plus className="h-5 w-5 text-blue-500" />
+          <Users className="h-5 w-5 text-blue-500" />
           <p className="mt-3 text-2xl font-bold text-gray-900">
-            {newStudentsCount}
+            {teachersWithoutGroupsCount}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Новых в этом месяце
+            Пока без групп
           </p>
         </div>
       </div>
 
       <div className="card p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-5">
-          <label className="xl:col-span-1">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
+          <label>
             <span className="mb-1.5 block text-xs font-medium text-gray-500">
               Поиск
             </span>
@@ -666,6 +676,9 @@ export default function AdminStudents() {
               <option value="all">
                 Все филиалы
               </option>
+              <option value="none">
+                Без назначенного филиала
+              </option>
               {branchOptions.map((option) => (
                 <option
                   key={option.value}
@@ -693,34 +706,7 @@ export default function AdminStudents() {
               <option value="all">
                 Все направления
               </option>
-              {directionOptions.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            <span className="mb-1.5 block text-xs font-medium text-gray-500">
-              Учебный план
-            </span>
-            <select
-              value={educationPlanFilter}
-              onChange={(event) =>
-                setEducationPlanFilter(
-                  event.target.value
-                )
-              }
-              className={selectClassName}
-            >
-              <option value="all">
-                Все учебные планы
-              </option>
-              {educationPlanOptions.map(
+              {directionOptions.map(
                 (option) => (
                   <option
                     key={option.value}
@@ -777,50 +763,48 @@ export default function AdminStudents() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <div>
-            <h2 className="font-bold text-gray-900">
-              Список студентов
-            </h2>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Показано: {filteredStudents.length}
-            </p>
-          </div>
+        <div className="border-b border-gray-100 px-5 py-4">
+          <h2 className="font-bold text-gray-900">
+            Список преподавателей
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Показано: {filteredTeachers.length}
+          </p>
         </div>
 
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center">
             <Loader2 className="h-7 w-7 animate-spin text-red-600" />
           </div>
-        ) : filteredStudents.length === 0 ? (
+        ) : filteredTeachers.length === 0 ? (
           <div className="flex min-h-72 flex-col items-center justify-center p-6 text-center">
-            <Users className="h-9 w-9 text-gray-300" />
+            <GraduationCap className="h-9 w-9 text-gray-300" />
             <p className="mt-3 font-medium text-gray-700">
-              Студенты не найдены
+              Преподаватели не найдены
             </p>
             <p className="mt-1 text-sm text-gray-400">
-              Измените фильтры или создайте нового студента.
+              Измените фильтры или создайте нового преподавателя.
             </p>
           </div>
         ) : (
-          <div className="max-h-[862px] overflow-auto overscroll-contain">
-            <table className="min-w-[1420px] w-full text-sm">
+          <div className="max-h-[748px] overflow-auto overscroll-contain">
+            <table className="w-full min-w-[1260px] text-sm">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
                   <th className="px-5 py-3 font-medium">
-                    Студент
+                    Преподаватель
                   </th>
                   <th className="px-4 py-3 font-medium">
                     Контакты
                   </th>
                   <th className="px-4 py-3 font-medium">
-                    Группа
+                    Группы
                   </th>
                   <th className="px-4 py-3 font-medium">
-                    Филиал
+                    Филиалы
                   </th>
                   <th className="px-4 py-3 font-medium">
-                    Направление и план
+                    Направления
                   </th>
                   <th className="px-4 py-3 font-medium">
                     Статус
@@ -832,25 +816,41 @@ export default function AdminStudents() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map(
-                  (student) => {
+                {filteredTeachers.map(
+                  (teacher) => {
                     const profile =
-                      student.profile;
-                    const primaryStudy =
-                      student.study[0];
+                      teacher.profile;
+
+                    const branchNames = [
+                      ...new Set(
+                        teacher.study.map(
+                          (assignment) =>
+                            assignment.branchName
+                        )
+                      ),
+                    ];
+
+                    const directionNames = [
+                      ...new Set(
+                        teacher.study.map(
+                          (assignment) =>
+                            assignment.directionName
+                        )
+                      ),
+                    ];
 
                     return (
                       <tr
                         key={profile.id}
-                        className="h-[82px] transition hover:bg-gray-50"
+                        className="h-[70px] transition hover:bg-gray-50"
                       >
                         <td className="px-5 py-3.5">
                           <button
                             type="button"
                             onClick={() => {
                               setActionError(null);
-                              setSelectedStudent(
-                                student
+                              setSelectedTeacher(
+                                teacher
                               );
                             }}
                             className="flex items-center gap-3 text-left"
@@ -859,7 +859,7 @@ export default function AdminStudents() {
                               avatarUrl={
                                 profile.avatar_url
                               }
-                              alt={getAdminStudentName(
+                              alt={getAdminTeacherName(
                                 profile
                               )}
                               className="h-10 w-10 shrink-0 rounded-full object-cover"
@@ -867,7 +867,7 @@ export default function AdminStudents() {
 
                             <span>
                               <span className="block font-semibold text-gray-900 hover:text-red-600">
-                                {getAdminStudentName(
+                                {getAdminTeacherName(
                                   profile
                                 )}
                               </span>
@@ -892,30 +892,26 @@ export default function AdminStudents() {
                         </td>
 
                         <td className="px-4 py-3.5 text-gray-700">
-                          {student.study.length > 0
-                            ? student.study
+                          {teacher.study.length > 0
+                            ? teacher.study
                                 .map(
-                                  (study) =>
-                                    study.groupName
+                                  (assignment) =>
+                                    assignment.groupName
                                 )
                                 .join(', ')
-                            : 'Без группы'}
+                            : 'Без групп'}
                         </td>
 
                         <td className="px-4 py-3.5 text-gray-600">
-                          {primaryStudy?.branchName ??
-                            'Не указан'}
+                          {branchNames.length > 0
+                            ? branchNames.join(', ')
+                            : 'Не назначен'}
                         </td>
 
-                        <td className="px-4 py-3.5">
-                          <p className="text-gray-700">
-                            {primaryStudy?.directionName ??
-                              'Не указано'}
-                          </p>
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            {primaryStudy?.educationPlanName ??
-                              'Учебный план не указан'}
-                          </p>
+                        <td className="px-4 py-3.5 text-gray-600">
+                          {directionNames.length > 0
+                            ? directionNames.join(', ')
+                            : 'Не назначено'}
                         </td>
 
                         <td className="px-4 py-3.5">
@@ -924,39 +920,37 @@ export default function AdminStudents() {
                           />
                         </td>
 
-                        <td className="px-5 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                        <td className="px-5 py-3.5">
+                          <div className="flex justify-end gap-2">
                             <button
                               type="button"
                               onClick={() =>
-                                navigate(
-                                  `/dashboard/messages?contactUserId=${profile.id}&contactRole=student`
+                                openTeacherMessage(
+                                  teacher
                                 )
                               }
-                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-600 hover:text-white"
-                              title={`Написать ${getAdminStudentName(
-                                profile
-                              )}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
                             >
-                              <MessageCircle className="h-3.5 w-3.5" />
+                              <MessageSquare className="h-3.5 w-3.5" />
                               Написать
                             </button>
 
-                            <a
-                              href={`tel:${profile.phone_number}`}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-green-200 hover:bg-green-50 hover:text-green-700"
-                              title={`Позвонить ${profile.phone_number}`}
-                            >
-                              <Phone className="h-3.5 w-3.5" />
-                              Позвонить
-                            </a>
+                            {profile.phone_number && (
+                              <a
+                                href={`tel:${profile.phone_number}`}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                                Позвонить
+                              </a>
+                            )}
 
                             <button
                               type="button"
                               onClick={() => {
                                 setActionError(null);
-                                setSelectedStudent(
-                                  student
+                                setSelectedTeacher(
+                                  teacher
                                 );
                               }}
                               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
@@ -977,13 +971,15 @@ export default function AdminStudents() {
 
       <AdminStudentFormModal
         isOpen={isFormOpen}
-        student={editingStudent}
+        student={editingTeacher}
+        entityLabel="преподавателя"
+        aboutLabel="О преподавателе"
         isSaving={isSaving}
         error={formError}
         onClose={() => {
           if (!isSaving) {
             setIsFormOpen(false);
-            setEditingStudent(null);
+            setEditingTeacher(null);
             setFormError(null);
           }
         }}
@@ -991,47 +987,58 @@ export default function AdminStudents() {
       />
 
       <AdminStudentDetailsModal
-        student={selectedStudent}
+        student={selectedTeacher}
+        roleLabel="Преподаватель"
+        assignmentTitle="Назначенные группы"
+        emptyAssignmentText="Преподаватель пока не назначен ни в одну группу"
+        deleteEntityLabel="преподавателя"
         activeAction={activeAction}
         error={actionError}
         onClose={() => {
           if (!activeAction) {
-            setSelectedStudent(null);
+            setSelectedTeacher(null);
             setActionError(null);
           }
         }}
         onEdit={() => {
-          if (selectedStudent) {
+          if (selectedTeacher) {
             openEditForm(
-              selectedStudent.profile
+              selectedTeacher.profile
+            );
+          }
+        }}
+        onMessage={() => {
+          if (selectedTeacher) {
+            openTeacherMessage(
+              selectedTeacher
             );
           }
         }}
         onVerifyAccount={() =>
-          void runStudentAction(
+          void runTeacherAction(
             'verify-account',
             verifyUserAccount,
-            'Аккаунт студента подтверждён'
+            'Аккаунт преподавателя подтверждён'
           )
         }
         onVerifyPhone={() =>
-          void runStudentAction(
+          void runTeacherAction(
             'verify-phone',
             verifyUserPhone,
-            'Телефон студента подтверждён'
+            'Телефон преподавателя подтверждён'
           )
         }
         onToggleActive={() =>
-          void runStudentAction(
+          void runTeacherAction(
             'toggle-active',
-            selectedStudent?.profile
+            selectedTeacher?.profile
               .is_active
               ? blockUser
               : activateUser,
-            selectedStudent?.profile
+            selectedTeacher?.profile
               .is_active
-              ? 'Студент заблокирован'
-              : 'Студент активирован'
+              ? 'Преподаватель заблокирован'
+              : 'Преподаватель активирован'
           )
         }
         onDelete={() =>

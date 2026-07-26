@@ -330,16 +330,32 @@ async function findPrivateChat(
       continue;
     }
 
-    const userIds = new Set(
+    const participantIds = new Set(
       result.value.members.map(
         (member) => member.user_id
       )
     );
 
+    // Communication Service may keep the chat creator only in
+    // `created_by` without a separate row in chat-members. Treat the
+    // creator as a participant so an existing personal chat is not
+    // mistaken for a new one.
+    participantIds.add(
+      result.value.chat.created_by
+    );
+
+    const hasUnrelatedParticipant = [
+      ...participantIds,
+    ].some(
+      (userId) =>
+        userId !== currentUserId &&
+        userId !== targetUserId
+    );
+
     if (
-      userIds.size === 2 &&
-      userIds.has(currentUserId) &&
-      userIds.has(targetUserId)
+      !hasUnrelatedParticipant &&
+      participantIds.has(currentUserId) &&
+      participantIds.has(targetUserId)
     ) {
       return result.value.chat;
     }
@@ -387,19 +403,56 @@ export async function openOrCreatePrivateChat(
     created_by: currentUserId,
   });
 
+  let activeMemberIds = new Set<number>();
+
   try {
-    await addChatMember({
-      chat_id: chat.id,
-      user_id: target.userId,
-      member_role: 'member',
-      added_by: currentUserId,
-    });
-  } catch (error) {
-    throw new Error(
-      error instanceof Error
-        ? `Чат создан, но участник не добавлен: ${error.message}`
-        : 'Чат создан, но участник не добавлен'
+    activeMemberIds = new Set(
+      (
+        await getChatMembers(chat.id)
+      ).items
+        .filter((member) => member.is_active)
+        .map((member) => member.user_id)
     );
+  } catch (membersError) {
+    console.warn(
+      'Не удалось проверить участников нового личного чата:',
+      membersError
+    );
+  }
+
+  if (!activeMemberIds.has(currentUserId)) {
+    try {
+      await addChatMember({
+        chat_id: chat.id,
+        user_id: currentUserId,
+        member_role: 'owner',
+        added_by: currentUserId,
+      });
+    } catch (creatorError) {
+      // Some Communication Service versions automatically consider
+      // `created_by` the owner and reject a duplicate member row.
+      console.warn(
+        'Создатель личного чата хранится только в created_by:',
+        creatorError
+      );
+    }
+  }
+
+  if (!activeMemberIds.has(target.userId)) {
+    try {
+      await addChatMember({
+        chat_id: chat.id,
+        user_id: target.userId,
+        member_role: 'member',
+        added_by: currentUserId,
+      });
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? `Чат создан, но участник не добавлен: ${error.message}`
+          : 'Чат создан, но участник не добавлен'
+      );
+    }
   }
 
   return chat;

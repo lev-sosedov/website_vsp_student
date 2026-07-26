@@ -27,6 +27,7 @@ import {
 } from 'react-router-dom';
 
 import {
+  archiveChat,
   deleteChatMessage,
   ensureStudentAdminChat,
   getChatMembers,
@@ -49,6 +50,8 @@ import {
 } from '../../../api/chatSocket';
 
 import {
+  clearUserProfileCache,
+  getUserById,
   getUsersByIds,
   type UserProfile,
 } from '../../../api/userApi';
@@ -550,6 +553,19 @@ export default function Messages() {
       : null;
   }, [searchParams]);
 
+  const requestedContactUserId =
+    useMemo(() => {
+      const contactUserId = Number(
+        searchParams.get('contactUserId')
+      );
+
+      return Number.isInteger(
+        contactUserId
+      ) && contactUserId > 0
+        ? contactUserId
+        : null;
+    }, [searchParams]);
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
     useState<number | null>(null);
@@ -560,7 +576,8 @@ export default function Messages() {
     if (
       activeChatId !== null &&
       (requestedChatId !== null ||
-        requestedGroupId !== null)
+        requestedGroupId !== null ||
+        requestedContactUserId !== null)
     ) {
       setMobileView('dialog');
     }
@@ -568,6 +585,7 @@ export default function Messages() {
     activeChatId,
     requestedChatId,
     requestedGroupId,
+    requestedContactUserId,
   ]);
 
   const [chatMessages, setChatMessages] =
@@ -674,6 +692,9 @@ export default function Messages() {
     useState<ChatMessage | null>(null);
 
   const [isMessageActionLoading, setIsMessageActionLoading] =
+    useState(false);
+
+  const [isChatArchiving, setIsChatArchiving] =
     useState(false);
 
   const messagesContainerRef =
@@ -942,7 +963,7 @@ export default function Messages() {
         currentUserId
       );
 
-      const availableChats = response.items
+      let availableChats = response.items
         .filter(
           (chat) =>
             chat.is_active &&
@@ -958,6 +979,109 @@ export default function Messages() {
             ).getTime()
           );
         });
+
+      let requestedContactChat: Chat | null =
+        null;
+
+      if (
+        requestedContactUserId !== null &&
+        requestedContactUserId !==
+          currentUserId
+      ) {
+        clearUserProfileCache(currentUserId);
+        clearUserProfileCache(
+          requestedContactUserId
+        );
+
+        const [
+          currentUserProfile,
+          contactProfile,
+        ] = await Promise.all([
+          getUserById(currentUserId),
+          getUserById(
+            requestedContactUserId
+          ),
+        ]);
+
+        if (
+          !currentUserProfile
+            .is_account_verified
+        ) {
+          throw new Error(
+            'Аккаунт текущего пользователя не подтверждён. Подтвердите аккаунт и выполните повторный вход.'
+          );
+        }
+
+        if (
+          !contactProfile
+            .is_account_verified
+        ) {
+          throw new Error(
+            'Аккаунт выбранного пользователя не подтверждён в User Service.'
+          );
+        }
+
+        const contactRole =
+          contactProfile.role
+            ?.toLowerCase() === 'admin'
+            ? 'admin'
+            : contactProfile.role
+                  ?.toLowerCase() ===
+                'teacher'
+              ? 'teacher'
+              : 'student';
+
+        const contactName = [
+          contactProfile.first_name,
+          contactProfile.user_name,
+          contactProfile.last_name,
+        ]
+          .map((value) => value?.trim())
+          .filter(Boolean)
+          .join(' ')
+          .trim() || 'Преподаватель';
+
+        requestedContactChat =
+          await openOrCreatePrivateChat(
+            availableChats,
+            currentUserId,
+            {
+              userId:
+                requestedContactUserId,
+              displayName: contactName,
+              avatarUrl:
+                contactProfile.avatar_url,
+              role: contactRole,
+            }
+          );
+
+        if (
+          !availableChats.some(
+            (chat) =>
+              chat.id ===
+              requestedContactChat?.id
+          )
+        ) {
+          availableChats = [
+            requestedContactChat,
+            ...availableChats,
+          ];
+        }
+
+        // Resolve a contact deep-link only once. Keeping contactUserId
+        // in the URL made every subsequent refresh attempt to open or
+        // create the same personal chat again.
+        setSearchParams(
+          {
+            chatId: String(
+              requestedContactChat.id
+            ),
+          },
+          {
+            replace: true,
+          }
+        );
+      }
 
       setChats(availableChats);
 
@@ -1026,6 +1150,10 @@ export default function Messages() {
       }
 
       setActiveChatId((currentId) => {
+        if (requestedContactChat) {
+          return requestedContactChat.id;
+        }
+
         if (requestedChatId !== null) {
           return requestedChat?.id ?? null;
         }
@@ -1058,6 +1186,8 @@ export default function Messages() {
     currentUserId,
     requestedChatId,
     requestedGroupId,
+    requestedContactUserId,
+    setSearchParams,
     user?.role,
   ]);
 
@@ -2158,6 +2288,103 @@ export default function Messages() {
     [currentUserId, showActionNotice]
   );
 
+  const handleArchiveActiveChat =
+    useCallback(async () => {
+      if (
+        currentUserId === null ||
+        activeChat === null ||
+        isChatArchiving
+      ) {
+        return;
+      }
+
+      const chatTitle = getDisplayChatTitle(
+        activeChat,
+        groupNamesById,
+        privateChatPartnersByChatId[
+          activeChat.id
+        ]
+      );
+
+      const isConfirmed = window.confirm(
+        `Удалить чат «${chatTitle}» из активного списка?\n\nЧат будет перемещён в архив вместе с сообщениями.`
+      );
+
+      if (!isConfirmed) {
+        return;
+      }
+
+      setIsChatArchiving(true);
+      setError(null);
+
+      try {
+        await archiveChat(activeChat.id, {
+          user_id: currentUserId,
+        });
+
+        const remainingChats = chats.filter(
+          (chat) => chat.id !== activeChat.id
+        );
+
+        const nextChatId =
+          remainingChats[0]?.id ?? null;
+
+        setChats(remainingChats);
+        setActiveChatId(nextChatId);
+        setChatMessages([]);
+        setMobileView('chats');
+
+        setLastMessageByChatId(
+          (currentMessages) => {
+            const nextMessages = {
+              ...currentMessages,
+            };
+
+            delete nextMessages[activeChat.id];
+
+            return nextMessages;
+          }
+        );
+
+        setUnreadCountByChatId(
+          (currentCounts) => {
+            const nextCounts = {
+              ...currentCounts,
+            };
+
+            delete nextCounts[activeChat.id];
+
+            return nextCounts;
+          }
+        );
+
+        setSearchParams({}, {
+          replace: true,
+        });
+
+        showActionNotice(
+          'Чат перемещён в архив'
+        );
+      } catch (archiveError) {
+        showActionNotice(
+          archiveError instanceof Error
+            ? archiveError.message
+            : 'Не удалось удалить чат'
+        );
+      } finally {
+        setIsChatArchiving(false);
+      }
+    }, [
+      activeChat,
+      chats,
+      currentUserId,
+      groupNamesById,
+      isChatArchiving,
+      privateChatPartnersByChatId,
+      setSearchParams,
+      showActionNotice,
+    ]);
+
   const startReply = useCallback(
     (message: ChatMessage) => {
       if (message.is_deleted) {
@@ -2843,7 +3070,7 @@ export default function Messages() {
                   className="h-10 w-10 shrink-0 rounded-full object-cover"
                 />
 
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-gray-900">
                     {getDisplayChatTitle(
                       activeChat,
@@ -2889,6 +3116,27 @@ export default function Messages() {
                     )}
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void handleArchiveActiveChat()
+                  }
+                  disabled={isChatArchiving}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Удалить чат"
+                  aria-label="Удалить чат"
+                >
+                  {isChatArchiving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+
+                  <span className="hidden sm:inline">
+                    Удалить чат
+                  </span>
+                </button>
               </header>
 
               {pinnedMessage && (

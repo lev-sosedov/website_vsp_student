@@ -7,6 +7,7 @@ import {
   Layers,
   Loader2,
   Mail,
+  MessageSquare,
   Pencil,
   Phone,
   ShieldCheck,
@@ -29,6 +30,10 @@ import {
 
 interface AdminStudentDetailsModalProps {
   student: AdminStudentItem | null;
+  roleLabel?: string;
+  assignmentTitle?: string;
+  emptyAssignmentText?: string;
+  deleteEntityLabel?: string;
   activeAction: string | null;
   error: string | null;
   onClose: () => void;
@@ -37,6 +42,7 @@ interface AdminStudentDetailsModalProps {
   onVerifyPhone: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onMessage?: () => void;
 }
 
 function VerificationBadge({
@@ -68,6 +74,11 @@ function VerificationBadge({
 
 export default function AdminStudentDetailsModal({
   student,
+  roleLabel = 'Студент',
+  assignmentTitle = 'Обучение',
+  emptyAssignmentText =
+    'Студент пока не зачислен в группу',
+  deleteEntityLabel = 'студента',
   activeAction,
   error,
   onClose,
@@ -76,6 +87,7 @@ export default function AdminStudentDetailsModal({
   onVerifyPhone,
   onToggleActive,
   onDelete,
+  onMessage,
 }: AdminStudentDetailsModalProps) {
   const [
     isDeleteConfirmationVisible,
@@ -117,7 +129,7 @@ export default function AdminStudentDetailsModal({
               </h2>
 
               <p className="mt-0.5 text-xs text-gray-500">
-                Студент
+                {roleLabel}
               </p>
             </div>
           </div>
@@ -194,14 +206,14 @@ export default function AdminStudentDetailsModal({
 
           <div className="mt-6">
             <h3 className="text-sm font-bold text-gray-900">
-              Обучение
+              {assignmentTitle}
             </h3>
 
             {student.study.length === 0 ? (
               <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
                 <GraduationCap className="mx-auto h-7 w-7 text-gray-300" />
                 <p className="mt-2 text-sm text-gray-500">
-                  Студент пока не зачислен в группу
+                  {emptyAssignmentText}
                 </p>
               </div>
             ) : (
@@ -244,6 +256,32 @@ export default function AdminStudentDetailsModal({
           )}
 
           <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {onMessage && (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={onMessage}
+                className={`${actionButtonClass} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`}
+              >
+                {activeAction === 'message' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                Написать
+              </button>
+            )}
+
+            {profile.phone_number && (
+              <a
+                href={`tel:${profile.phone_number}`}
+                className={`${actionButtonClass} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
+              >
+                <Phone className="h-4 w-4" />
+                Позвонить
+              </a>
+            )}
+
             <button
               type="button"
               disabled={isBusy}
@@ -316,7 +354,7 @@ export default function AdminStudentDetailsModal({
             {isDeleteConfirmationVisible ? (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="text-sm font-semibold text-red-800">
-                  Удалить студента без возможности восстановления?
+                  Удалить {deleteEntityLabel} без возможности восстановления?
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -358,7 +396,7 @@ export default function AdminStudentDetailsModal({
                 className="inline-flex items-center gap-2 text-sm font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
               >
                 <Trash2 className="h-4 w-4" />
-                Удалить студента
+                Удалить {deleteEntityLabel}
               </button>
             )}
           </div>
