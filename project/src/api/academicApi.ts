@@ -52,6 +52,7 @@ export interface AcademicGroup {
 
   is_active?: boolean;
   is_closed?: boolean;
+  closed_at?: string | null;
 
   created_at?: string;
   updated_at?: string;
@@ -77,6 +78,9 @@ export interface AcademicBranch {
   address_id?: number | null;
   branch_address_id?: number | null;
   is_active?: boolean;
+  phone?: string | null;
+  email?: string | null;
+  closed_at?: string | null;
 }
 
 export interface AcademicBranchAddress {
@@ -97,7 +101,18 @@ export interface AcademicEducationPlan {
   name?: string | null;
   title?: string | null;
   description?: string | null;
+  duration_months?: number | null;
+  lessons_per_week?: number | null;
   is_active?: boolean;
+}
+
+export interface AcademicGroupMutation {
+  name: string;
+  branch_id: number;
+  direction_id: number;
+  education_plan_id: number;
+  start_date: string;
+  end_date: string | null;
 }
 
 interface AcademicListResponse<T> {
@@ -224,11 +239,69 @@ export async function getGroups(): Promise<
   const response = await request<
     AcademicGroup[] |
     AcademicListResponse<AcademicGroup>
-  >('/api/v1/groups/');
+  >('/api/v1/groups/?limit=1000&offset=0');
 
   return Array.isArray(response)
     ? response
     : response.items ?? [];
+}
+
+export async function createGroup(
+  data: AcademicGroupMutation
+): Promise<AcademicGroup> {
+  return request<AcademicGroup>(
+    '/api/v1/groups/',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateGroup(
+  groupId: number,
+  data: AcademicGroupMutation
+): Promise<AcademicGroup> {
+  return request<AcademicGroup>(
+    `/api/v1/groups/${groupId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function closeGroup(
+  groupId: number
+): Promise<AcademicGroup> {
+  return request<AcademicGroup>(
+    `/api/v1/groups/${groupId}/close`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function restoreGroup(
+  groupId: number
+): Promise<AcademicGroup> {
+  return request<AcademicGroup>(
+    `/api/v1/groups/${groupId}/restore`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function safeDeleteGroup(
+  groupId: number
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/groups/${groupId}/safe`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
 /**
@@ -251,6 +324,53 @@ export async function getGroupTeacher(
   return request<GroupMember | null>(
     `/api/v1/group-members/group/${groupId}/teacher`
   );
+}
+
+export async function assignGroupTeacher(
+  groupId: number,
+  userId: number
+): Promise<GroupMember> {
+  return request<GroupMember>(
+    `/api/v1/group-members/group/${groupId}/teacher/${userId}`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function assignGroupStudent(
+  groupId: number,
+  userId: number
+): Promise<GroupMember> {
+  return request<GroupMember>(
+    `/api/v1/group-members/group/${groupId}/student/${userId}`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function removeGroupMember(
+  memberId: number
+): Promise<GroupMember> {
+  return request<GroupMember>(
+    `/api/v1/group-members/${memberId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function getGroupStudentCount(
+  groupId: number
+): Promise<number> {
+  const response = await request<{
+    students: number;
+  }>(
+    `/api/v1/group-members/group/${groupId}/count/students`
+  );
+
+  return response.students;
 }
 
 /**
@@ -322,6 +442,19 @@ export async function getDirection(
   );
 }
 
+export async function getDirections(): Promise<
+  AcademicDirection[]
+> {
+  const response = await request<
+    AcademicDirection[] |
+    AcademicListResponse<AcademicDirection>
+  >('/api/v1/directions?limit=1000&offset=0');
+
+  return Array.isArray(response)
+    ? response
+    : response.items ?? [];
+}
+
 /**
  * Получить филиал по ID.
  */
@@ -331,6 +464,23 @@ export async function getBranch(
   return request<AcademicBranch>(
     `/api/v1/branches/${branchId}`
   );
+}
+
+export async function getBranches(
+  activeOnly = false
+): Promise<AcademicBranch[]> {
+  const response = await request<
+    AcademicBranch[] |
+    AcademicListResponse<AcademicBranch>
+  >(
+    `/api/v1/branches?active_only=${String(
+      activeOnly
+    )}`
+  );
+
+  return Array.isArray(response)
+    ? response
+    : response.items ?? [];
 }
 
 /**
@@ -376,4 +526,19 @@ export async function getEducationPlan(
     lastError ??
     new Error('Учебный план не найден')
   );
+}
+
+export async function getEducationPlans(): Promise<
+  AcademicEducationPlan[]
+> {
+  const response = await request<
+    AcademicEducationPlan[] |
+    AcademicListResponse<AcademicEducationPlan>
+  >(
+    '/api/v1/education-plans?limit=1000&offset=0'
+  );
+
+  return Array.isArray(response)
+    ? response
+    : response.items ?? [];
 }

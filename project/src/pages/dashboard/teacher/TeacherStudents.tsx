@@ -13,7 +13,6 @@ import {
   Mail,
   MessageSquare,
   Phone,
-  RefreshCw,
   Search,
   UserRound,
   Users,

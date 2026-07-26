@@ -8,8 +8,6 @@ import {
   AlertCircle,
   BookOpen,
   CheckCircle2,
-  Loader2,
-  RefreshCw,
   TrendingUp,
 } from 'lucide-react';
 
@@ -49,7 +47,6 @@ const EMPTY_STATISTICS: StudentDashboardStatistics = {
 
 function getGreetingName(
   firstName: string | null | undefined,
-  lastName: string | null | undefined,
   userName: string | null | undefined
 ): string {
   const fullName = [firstName, userName]
@@ -262,7 +259,6 @@ export default function StudentDashboard() {
 
   const greetingName = getGreetingName(
     user?.first_name,
-    user?.last_name,
     user?.user_name
   );
 
