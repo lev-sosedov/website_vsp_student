@@ -36,6 +36,28 @@ export interface HomeworkListResponse {
   items: Homework[];
 }
 
+export interface CreateHomeworkData {
+  lesson_id: number;
+  title: string;
+  description: string;
+  instructions: string | null;
+  max_score: number;
+  due_at: string | null;
+  allow_late_submission: boolean;
+  created_by: number;
+  is_published: boolean;
+}
+
+export interface UpdateHomeworkData {
+  title?: string;
+  description?: string;
+  instructions?: string | null;
+  max_score?: number;
+  due_at?: string | null;
+  allow_late_submission?: boolean;
+  updated_by: number;
+}
+
 export interface HomeworkSubmission {
   id: number;
 
@@ -88,6 +110,30 @@ export interface HomeworkAttachmentListResponse {
   items: HomeworkAttachment[];
 }
 
+export interface CreateHomeworkAttachmentData {
+  homework_id: number;
+  title: string;
+  attachment_type: string;
+  file_url: string;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  sort_order: number;
+  is_visible: boolean;
+  uploaded_by: number;
+}
+
+export interface UpdateHomeworkAttachmentData {
+  title?: string;
+  attachment_type?: string;
+  file_url?: string;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+  sort_order?: number;
+  updated_by: number;
+}
+
 interface FastApiError {
   detail?:
     | string
@@ -98,6 +144,7 @@ interface FastApiError {
 
 function getAccessToken(): string | null {
   return (
+    localStorage.getItem('vshp_access_token') ??
     localStorage.getItem('access_token') ??
     localStorage.getItem('accessToken')
   );
@@ -220,6 +267,95 @@ export async function getGroupHomeworks(
   return response.items;
 }
 
+export async function getTeacherHomeworks(
+  teacherId: number
+): Promise<Homework[]> {
+  validateId(teacherId, 'ID преподавателя');
+
+  const query = new URLSearchParams({
+    created_by: String(teacherId),
+    skip: '0',
+    limit: '500',
+  });
+
+  const response =
+    await request<HomeworkListResponse>(
+      `/api/v1/homeworks?${query.toString()}`
+    );
+
+  return response.items;
+}
+
+export function createHomework(
+  data: CreateHomeworkData
+): Promise<Homework> {
+  validateId(data.lesson_id, 'ID занятия');
+  validateId(data.created_by, 'ID преподавателя');
+
+  return request<Homework>('/api/v1/homeworks', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateHomework(
+  homeworkId: number,
+  data: UpdateHomeworkData
+): Promise<Homework> {
+  validateId(homeworkId, 'ID домашнего задания');
+  validateId(data.updated_by, 'ID преподавателя');
+
+  return request<Homework>(
+    `/api/v1/homeworks/${homeworkId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export function setHomeworkPublished(
+  homeworkId: number,
+  updatedBy: number,
+  isPublished: boolean
+): Promise<Homework> {
+  validateId(homeworkId, 'ID домашнего задания');
+  validateId(updatedBy, 'ID преподавателя');
+
+  return request<Homework>(
+    `/api/v1/homeworks/${homeworkId}/${
+      isPublished ? 'publish' : 'unpublish'
+    }`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
+export function setHomeworkActive(
+  homeworkId: number,
+  updatedBy: number,
+  isActive: boolean
+): Promise<Homework> {
+  validateId(homeworkId, 'ID домашнего задания');
+  validateId(updatedBy, 'ID преподавателя');
+
+  return request<Homework>(
+    `/api/v1/homeworks/${homeworkId}/${
+      isActive ? 'activate' : 'deactivate'
+    }`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
 
 export async function getHomework(
   homeworkId: number
@@ -281,6 +417,93 @@ export async function getVisibleHomeworkAttachments(
       first.sort_order -
         second.sort_order ||
       first.id - second.id
+  );
+}
+
+export async function getHomeworkAttachments(
+  homeworkId: number
+): Promise<HomeworkAttachment[]> {
+  validateId(homeworkId, 'ID домашнего задания');
+
+  const response =
+    await request<HomeworkAttachmentListResponse>(
+      `/api/v1/homework-attachments/homework/${homeworkId}`
+    );
+
+  return response.items.sort(
+    (first, second) =>
+      first.sort_order - second.sort_order ||
+      first.id - second.id
+  );
+}
+
+export function createHomeworkAttachment(
+  data: CreateHomeworkAttachmentData
+): Promise<HomeworkAttachment> {
+  validateId(data.homework_id, 'ID домашнего задания');
+  validateId(data.uploaded_by, 'ID преподавателя');
+
+  return request<HomeworkAttachment>(
+    '/api/v1/homework-attachments',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export function updateHomeworkAttachment(
+  attachmentId: number,
+  data: UpdateHomeworkAttachmentData
+): Promise<HomeworkAttachment> {
+  validateId(attachmentId, 'ID вложения');
+  validateId(data.updated_by, 'ID преподавателя');
+
+  return request<HomeworkAttachment>(
+    `/api/v1/homework-attachments/${attachmentId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export function setHomeworkAttachmentVisible(
+  attachmentId: number,
+  updatedBy: number,
+  isVisible: boolean
+): Promise<HomeworkAttachment> {
+  validateId(attachmentId, 'ID вложения');
+  validateId(updatedBy, 'ID преподавателя');
+
+  return request<HomeworkAttachment>(
+    `/api/v1/homework-attachments/${attachmentId}/${
+      isVisible ? 'show' : 'hide'
+    }`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
+export async function deleteHomeworkAttachment(
+  attachmentId: number,
+  deletedBy: number
+): Promise<void> {
+  validateId(attachmentId, 'ID вложения');
+  validateId(deletedBy, 'ID преподавателя');
+
+  await request<{
+    deleted: boolean;
+    attachment_id: number;
+  }>(
+    `/api/v1/homework-attachments/${attachmentId}?deleted_by=${deletedBy}`,
+    {
+      method: 'DELETE',
+    }
   );
 }
 

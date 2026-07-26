@@ -32,6 +32,7 @@ import {
   getUsersByIds,
   type UserProfile,
 } from '../../../api/userApi';
+import TeacherHomeworkManagement from '../../../components/dashboard/teacher/homework/TeacherHomeworkManagement';
 
 type FilterStatus = 'all' | HomeworkSubmissionStatus;
 
@@ -501,6 +502,13 @@ export default function TeacherHomeworkReview() {
           </p>
         </div>
       </div>
+
+      {teacherId && (
+        <TeacherHomeworkManagement
+          teacherId={teacherId}
+          onChanged={loadSubmissions}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <CounterCard
