@@ -44,6 +44,109 @@ export interface LessonListResponse {
   items: LessonSchedule[];
 }
 
+export interface LessonCreate {
+  group_id: number;
+  teacher_id: number;
+  room_id: number;
+  template_id?: number | null;
+  lesson_date: string;
+  start_time: string;
+  end_time: string;
+  lesson_type: LessonType;
+  topic?: string | null;
+  description?: string | null;
+  is_extra: boolean;
+  created_by?: number | null;
+}
+
+export interface LessonUpdate {
+  group_id?: number;
+  teacher_id?: number;
+  room_id?: number;
+  template_id?: number | null;
+  lesson_date?: string;
+  start_time?: string;
+  end_time?: string;
+  lesson_type?: LessonType;
+  topic?: string | null;
+  description?: string | null;
+  is_extra?: boolean;
+  changed_by: number;
+  reason?: string | null;
+}
+
+export interface LessonReschedule {
+  lesson_date: string;
+  start_time: string;
+  end_time: string;
+  room_id?: number;
+  teacher_id?: number;
+  changed_by: number;
+  reason: string;
+}
+
+export interface ScheduleTemplate {
+  id: number;
+  group_id: number;
+  teacher_id: number;
+  room_id: number;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  lesson_type: LessonType;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleTemplateCreate {
+  group_id: number;
+  teacher_id: number;
+  room_id: number;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  lesson_type: LessonType;
+}
+
+export type ScheduleTemplateUpdate =
+  Partial<ScheduleTemplateCreate> & {
+    is_active?: boolean;
+  };
+
+export interface LessonGenerationRequest {
+  date_from: string;
+  date_to: string;
+  created_by: number;
+  skip_conflicts: boolean;
+  topic?: string | null;
+  description?: string | null;
+}
+
+export interface LessonGenerationResult {
+  template_id: number;
+  date_from: string;
+  date_to: string;
+  created_count: number;
+  skipped_count: number;
+  created_lesson_ids: number[];
+  conflicts: Array<{
+    lesson_date: string;
+    reason: string;
+    conflict_lesson_id: number | null;
+  }>;
+}
+
+interface ScheduleTemplateListResponse {
+  total: number;
+  items: ScheduleTemplate[];
+}
+
+interface RoomListResponse {
+  total: number;
+  items: Room[];
+}
+
 /**
  * Параметры получения занятий группы.
  *
@@ -299,5 +402,181 @@ export async function getRoom(
 
   return request<Room>(
     `/api/v1/rooms/${roomId}`
+  );
+}
+
+export async function getRooms(
+  branchId?: number
+): Promise<Room[]> {
+  const searchParams = new URLSearchParams({
+    is_active: 'true',
+    limit: '500',
+  });
+
+  if (branchId) {
+    searchParams.set('branch_id', String(branchId));
+  }
+
+  const response = await request<RoomListResponse>(
+    `/api/v1/rooms?${searchParams.toString()}`
+  );
+
+  return response.items;
+}
+
+export async function getTeacherLessons(
+  teacherId: number,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<LessonSchedule[]> {
+  const searchParams = new URLSearchParams();
+
+  if (dateFrom) {
+    searchParams.set('lesson_date_from', dateFrom);
+  }
+
+  if (dateTo) {
+    searchParams.set('lesson_date_to', dateTo);
+  }
+
+  const query = searchParams.toString();
+  const response = await request<LessonListResponse>(
+    `/api/v1/lessons/teacher/${teacherId}${
+      query ? `?${query}` : ''
+    }`
+  );
+
+  return response.items;
+}
+
+export function createLesson(
+  lesson: LessonCreate
+): Promise<LessonSchedule> {
+  return request<LessonSchedule>('/api/v1/lessons', {
+    method: 'POST',
+    body: JSON.stringify(lesson),
+  });
+}
+
+export function updateLesson(
+  lessonId: number,
+  lesson: LessonUpdate
+): Promise<LessonSchedule> {
+  return request<LessonSchedule>(
+    `/api/v1/lessons/${lessonId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(lesson),
+    }
+  );
+}
+
+export function cancelLesson(
+  lessonId: number,
+  changedBy: number,
+  reason: string
+): Promise<LessonSchedule> {
+  return request<LessonSchedule>(
+    `/api/v1/lessons/${lessonId}/cancel`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        changed_by: changedBy,
+        reason,
+      }),
+    }
+  );
+}
+
+export function completeLesson(
+  lessonId: number,
+  changedBy: number,
+  reason?: string
+): Promise<LessonSchedule> {
+  return request<LessonSchedule>(
+    `/api/v1/lessons/${lessonId}/complete`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        changed_by: changedBy,
+        reason: reason?.trim() || null,
+      }),
+    }
+  );
+}
+
+export function rescheduleLesson(
+  lessonId: number,
+  payload: LessonReschedule
+): Promise<LessonSchedule> {
+  return request<LessonSchedule>(
+    `/api/v1/lessons/${lessonId}/reschedule`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function getTeacherScheduleTemplates(
+  teacherId: number
+): Promise<ScheduleTemplate[]> {
+  const response =
+    await request<ScheduleTemplateListResponse>(
+      `/api/v1/schedule-templates?teacher_id=${teacherId}&limit=500`
+    );
+
+  return response.items;
+}
+
+export function createScheduleTemplate(
+  template: ScheduleTemplateCreate
+): Promise<ScheduleTemplate> {
+  return request<ScheduleTemplate>(
+    '/api/v1/schedule-templates',
+    {
+      method: 'POST',
+      body: JSON.stringify(template),
+    }
+  );
+}
+
+export function updateScheduleTemplate(
+  templateId: number,
+  template: ScheduleTemplateUpdate
+): Promise<ScheduleTemplate> {
+  return request<ScheduleTemplate>(
+    `/api/v1/schedule-templates/${templateId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(template),
+    }
+  );
+}
+
+export function setScheduleTemplateActive(
+  templateId: number,
+  isActive: boolean
+): Promise<ScheduleTemplate> {
+  return request<ScheduleTemplate>(
+    `/api/v1/schedule-templates/${templateId}/${
+      isActive ? 'activate' : 'deactivate'
+    }`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export function generateTemplateLessons(
+  templateId: number,
+  payload: LessonGenerationRequest
+): Promise<LessonGenerationResult> {
+  return request<LessonGenerationResult>(
+    `/api/v1/schedule-templates/${templateId}/generate-lessons`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
   );
 }

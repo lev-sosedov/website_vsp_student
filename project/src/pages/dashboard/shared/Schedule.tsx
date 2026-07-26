@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -341,7 +347,15 @@ function getErrorMessage(error: unknown): string {
   return 'Не удалось загрузить расписание';
 }
 
-export default function Schedule() {
+interface ScheduleProps {
+  managementPanel?: ReactNode;
+  refreshKey?: number;
+}
+
+export default function Schedule({
+  managementPanel,
+  refreshKey = 0,
+}: ScheduleProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -904,6 +918,7 @@ export default function Schedule() {
     groupsLoading,
     studentGroupsLoading,
     isTeacher,
+    refreshKey,
   ]);
 
   const calendarDays = useMemo<
@@ -1148,6 +1163,8 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {managementPanel}
 
       {showGroupSelector && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
