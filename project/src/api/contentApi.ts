@@ -94,6 +94,68 @@ export interface GetLessonLinksParams {
   limit?: number;
 }
 
+export interface CreateLessonContentData {
+  lesson_id: number;
+  title: string;
+  summary: string | null;
+  content: string | null;
+  created_by: number;
+  is_published: boolean;
+}
+
+export interface UpdateLessonContentData {
+  title?: string;
+  summary?: string | null;
+  content?: string | null;
+  updated_by: number;
+}
+
+export interface CreateLessonAttachmentData {
+  lesson_content_id: number;
+  title: string;
+  attachment_type: AttachmentType;
+  file_url: string;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  sort_order: number;
+  is_visible: boolean;
+  uploaded_by: number;
+}
+
+export interface UpdateLessonAttachmentData {
+  title?: string;
+  attachment_type?: AttachmentType;
+  file_url?: string;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+  sort_order?: number;
+  updated_by: number;
+}
+
+export interface CreateLessonLinkData {
+  lesson_content_id: number;
+  title: string;
+  url: string;
+  description: string | null;
+  sort_order: number;
+  is_visible: boolean;
+  added_by: number;
+}
+
+export interface UpdateLessonLinkData {
+  title?: string;
+  url?: string;
+  description?: string | null;
+  sort_order?: number;
+  updated_by: number;
+}
+
+interface DeleteResponse {
+  deleted: boolean;
+}
+
 interface FastApiValidationError {
   loc?: Array<string | number>;
   msg?: string;
@@ -106,6 +168,9 @@ interface FastApiErrorResponse {
 
 function getAccessToken(): string | null {
   return (
+    localStorage.getItem(
+      'vshp_access_token'
+    ) ??
     localStorage.getItem('access_token') ??
     localStorage.getItem('accessToken')
   );
@@ -317,6 +382,76 @@ export async function getLessonContentByLesson(
   );
 }
 
+export async function createLessonContent(
+  data: CreateLessonContentData
+): Promise<LessonContent> {
+  return request<LessonContent>(
+    '/api/v1/lesson-contents',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateLessonContent(
+  contentId: number,
+  data: UpdateLessonContentData
+): Promise<LessonContent> {
+  validatePositiveId(
+    contentId,
+    'ID материала'
+  );
+
+  return request<LessonContent>(
+    `/api/v1/lesson-contents/${contentId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function publishLessonContent(
+  contentId: number,
+  updatedBy: number
+): Promise<LessonContent> {
+  validatePositiveId(
+    contentId,
+    'ID материала'
+  );
+
+  return request<LessonContent>(
+    `/api/v1/lesson-contents/${contentId}/publish`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
+export async function unpublishLessonContent(
+  contentId: number,
+  updatedBy: number
+): Promise<LessonContent> {
+  validatePositiveId(
+    contentId,
+    'ID материала'
+  );
+
+  return request<LessonContent>(
+    `/api/v1/lesson-contents/${contentId}/unpublish`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
 /* =====================================================
    Файлы материалов
 ===================================================== */
@@ -402,6 +537,79 @@ export async function getVisibleContentAttachments(
   );
 }
 
+export async function createLessonAttachment(
+  data: CreateLessonAttachmentData
+): Promise<LessonAttachment> {
+  return request<LessonAttachment>(
+    '/api/v1/lesson-attachments',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateLessonAttachment(
+  attachmentId: number,
+  data: UpdateLessonAttachmentData
+): Promise<LessonAttachment> {
+  validatePositiveId(
+    attachmentId,
+    'ID вложения'
+  );
+
+  return request<LessonAttachment>(
+    `/api/v1/lesson-attachments/${attachmentId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function setLessonAttachmentVisibility(
+  attachmentId: number,
+  isVisible: boolean,
+  updatedBy: number
+): Promise<LessonAttachment> {
+  validatePositiveId(
+    attachmentId,
+    'ID вложения'
+  );
+
+  const action = isVisible
+    ? 'show'
+    : 'hide';
+
+  return request<LessonAttachment>(
+    `/api/v1/lesson-attachments/${attachmentId}/${action}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
+export async function deleteLessonAttachment(
+  attachmentId: number,
+  deletedBy: number
+): Promise<void> {
+  validatePositiveId(
+    attachmentId,
+    'ID вложения'
+  );
+
+  await request<DeleteResponse>(
+    `/api/v1/lesson-attachments/${attachmentId}` +
+      `?deleted_by=${deletedBy}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
 /* =====================================================
    Ссылки материалов
 ===================================================== */
@@ -482,6 +690,79 @@ export async function getVisibleContentLinks(
       firstLink.sort_order -
         secondLink.sort_order ||
       firstLink.id - secondLink.id
+  );
+}
+
+export async function createLessonLink(
+  data: CreateLessonLinkData
+): Promise<LessonLink> {
+  return request<LessonLink>(
+    '/api/v1/lesson-links',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateLessonLink(
+  linkId: number,
+  data: UpdateLessonLinkData
+): Promise<LessonLink> {
+  validatePositiveId(
+    linkId,
+    'ID ссылки'
+  );
+
+  return request<LessonLink>(
+    `/api/v1/lesson-links/${linkId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function setLessonLinkVisibility(
+  linkId: number,
+  isVisible: boolean,
+  updatedBy: number
+): Promise<LessonLink> {
+  validatePositiveId(
+    linkId,
+    'ID ссылки'
+  );
+
+  const action = isVisible
+    ? 'show'
+    : 'hide';
+
+  return request<LessonLink>(
+    `/api/v1/lesson-links/${linkId}/${action}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        updated_by: updatedBy,
+      }),
+    }
+  );
+}
+
+export async function deleteLessonLink(
+  linkId: number,
+  deletedBy: number
+): Promise<void> {
+  validatePositiveId(
+    linkId,
+    'ID ссылки'
+  );
+
+  await request<DeleteResponse>(
+    `/api/v1/lesson-links/${linkId}` +
+      `?deleted_by=${deletedBy}`,
+    {
+      method: 'DELETE',
+    }
   );
 }
 

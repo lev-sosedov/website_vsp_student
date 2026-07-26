@@ -36,6 +36,7 @@ import TeacherHomeworkReview from '../pages/dashboard/teacher/TeacherHomeworkRev
 import TeacherAttendance from '../pages/dashboard/teacher/TeacherAttendance';
 import TeacherGroups from '../pages/dashboard/teacher/TeacherGroups';
 import TeacherStudents from '../pages/dashboard/teacher/TeacherStudents';
+import TeacherMaterials from '../pages/dashboard/teacher/TeacherMaterials';
 import AdminDashboard from '../pages/dashboard/admin/AdminDashboard';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
@@ -371,7 +372,11 @@ export default function DashboardRouter() {
 
         <Route
           path="materials"
-          element={<Materials />}
+          element={
+            currentRole === 'teacher'
+              ? <TeacherMaterials />
+              : <Materials />
+          }
         />
 
         <Route
