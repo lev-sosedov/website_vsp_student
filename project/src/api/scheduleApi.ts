@@ -44,6 +44,18 @@ export interface LessonListResponse {
   items: LessonSchedule[];
 }
 
+export interface GetLessonsParams {
+  groupId?: number;
+  teacherId?: number;
+  roomId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  isExtra?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
 export interface LessonCreate {
   group_id: number;
   teacher_id: number;
@@ -140,6 +152,41 @@ export interface LessonGenerationResult {
 interface ScheduleTemplateListResponse {
   total: number;
   items: ScheduleTemplate[];
+}
+
+export interface GetScheduleTemplatesParams {
+  groupId?: number;
+  teacherId?: number;
+  roomId?: number;
+  weekday?: number;
+  isActive?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
+export interface ScheduleChange {
+  id: number;
+  lesson_id: number;
+  change_type: string;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  reason: string | null;
+  changed_by: number;
+  comment: string | null;
+  created_at: string;
+}
+
+interface ScheduleChangeListResponse {
+  total: number;
+  items: ScheduleChange[];
+}
+
+export interface GetScheduleChangesParams {
+  lessonId?: number;
+  changedBy?: number;
+  changeType?: string;
+  skip?: number;
+  limit?: number;
 }
 
 interface RoomListResponse {
@@ -515,6 +562,61 @@ export async function getTeacherLessons(
   return response.items;
 }
 
+export async function getLessons(
+  params: GetLessonsParams = {}
+): Promise<LessonSchedule[]> {
+  const searchParams = new URLSearchParams({
+    skip: String(params.skip ?? 0),
+    limit: String(params.limit ?? 500),
+  });
+
+  if (params.groupId) {
+    searchParams.set('group_id', String(params.groupId));
+  }
+
+  if (params.teacherId) {
+    searchParams.set(
+      'teacher_id',
+      String(params.teacherId)
+    );
+  }
+
+  if (params.roomId) {
+    searchParams.set('room_id', String(params.roomId));
+  }
+
+  if (params.dateFrom) {
+    searchParams.set(
+      'lesson_date_from',
+      params.dateFrom
+    );
+  }
+
+  if (params.dateTo) {
+    searchParams.set(
+      'lesson_date_to',
+      params.dateTo
+    );
+  }
+
+  if (params.status) {
+    searchParams.set('status', params.status);
+  }
+
+  if (params.isExtra !== undefined) {
+    searchParams.set(
+      'is_extra',
+      String(params.isExtra)
+    );
+  }
+
+  const response = await request<LessonListResponse>(
+    `/api/v1/lessons?${searchParams.toString()}`
+  );
+
+  return response.items;
+}
+
 export function createLesson(
   lesson: LessonCreate
 ): Promise<LessonSchedule> {
@@ -595,6 +697,51 @@ export async function getTeacherScheduleTemplates(
   return response.items;
 }
 
+export async function getScheduleTemplates(
+  params: GetScheduleTemplatesParams = {}
+): Promise<ScheduleTemplate[]> {
+  const searchParams = new URLSearchParams({
+    skip: String(params.skip ?? 0),
+    limit: String(params.limit ?? 500),
+  });
+
+  if (params.groupId) {
+    searchParams.set('group_id', String(params.groupId));
+  }
+
+  if (params.teacherId) {
+    searchParams.set(
+      'teacher_id',
+      String(params.teacherId)
+    );
+  }
+
+  if (params.roomId) {
+    searchParams.set('room_id', String(params.roomId));
+  }
+
+  if (params.weekday !== undefined) {
+    searchParams.set(
+      'weekday',
+      String(params.weekday)
+    );
+  }
+
+  if (params.isActive !== undefined) {
+    searchParams.set(
+      'is_active',
+      String(params.isActive)
+    );
+  }
+
+  const response =
+    await request<ScheduleTemplateListResponse>(
+      `/api/v1/schedule-templates?${searchParams.toString()}`
+    );
+
+  return response.items;
+}
+
 export function createScheduleTemplate(
   template: ScheduleTemplateCreate
 ): Promise<ScheduleTemplate> {
@@ -645,4 +792,41 @@ export function generateTemplateLessons(
       body: JSON.stringify(payload),
     }
   );
+}
+
+export async function getScheduleChanges(
+  params: GetScheduleChangesParams = {}
+): Promise<ScheduleChange[]> {
+  const searchParams = new URLSearchParams({
+    skip: String(params.skip ?? 0),
+    limit: String(params.limit ?? 500),
+  });
+
+  if (params.lessonId) {
+    searchParams.set(
+      'lesson_id',
+      String(params.lessonId)
+    );
+  }
+
+  if (params.changedBy) {
+    searchParams.set(
+      'changed_by',
+      String(params.changedBy)
+    );
+  }
+
+  if (params.changeType) {
+    searchParams.set(
+      'change_type',
+      params.changeType
+    );
+  }
+
+  const response =
+    await request<ScheduleChangeListResponse>(
+      `/api/v1/schedule-changes?${searchParams.toString()}`
+    );
+
+  return response.items;
 }

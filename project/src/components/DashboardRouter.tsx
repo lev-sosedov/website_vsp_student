@@ -45,6 +45,7 @@ import AdminTeachers from '../pages/dashboard/admin/AdminTeachers';
 import AdminGroups from '../pages/dashboard/admin/AdminGroups';
 import AdminBranches from '../pages/dashboard/admin/AdminBranches';
 import AdminEducationPrograms from '../pages/dashboard/admin/AdminEducationPrograms';
+import AdminSchedule from '../pages/dashboard/admin/AdminSchedule';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -243,6 +244,11 @@ const adminNav: NavItem[] = [
     icon: BookOpen,
   },
   {
+    to: '/dashboard/schedule',
+    label: 'Расписание',
+    icon: Calendar,
+  },
+  {
     to: '/dashboard/progress',
     label: 'Аналитика',
     icon: TrendingUp,
@@ -378,7 +384,9 @@ export default function DashboardRouter() {
           element={
             currentRole === 'teacher'
               ? <TeacherSchedule />
-              : <Schedule />
+              : currentRole === 'admin'
+                ? <AdminSchedule />
+                : <Schedule />
           }
         />
 
