@@ -51,6 +51,7 @@ import AdminSchedule from '../pages/dashboard/admin/AdminSchedule';
 import AdminNews from '../pages/dashboard/admin/AdminNews';
 import AdminRoles from '../pages/dashboard/admin/AdminRoles';
 import AdminAnalytics from '../pages/dashboard/admin/AdminAnalytics';
+import AdminAdministrators from '../pages/dashboard/admin/AdminAdministrators';
 
 
 import Schedule from '../pages/dashboard/shared/Schedule';
@@ -233,6 +234,11 @@ const adminNav: NavItem[] = [
     to: '/dashboard/teachers',
     label: 'Преподаватели',
     icon: GraduationCap,
+  },
+  {
+  to: '/dashboard/administrators',
+  label: 'Администраторы',
+  icon: ShieldCheck,
   },
   {
     to: '/dashboard/groups',
@@ -525,6 +531,20 @@ export default function DashboardRouter() {
           element={
             currentRole === 'admin'
               ? <AdminRoles />
+              : (
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              )
+          }
+        />
+
+        <Route
+          path="administrators"
+          element={
+            currentRole === 'admin'
+              ? <AdminAdministrators />
               : (
                 <Navigate
                   to="/dashboard"
