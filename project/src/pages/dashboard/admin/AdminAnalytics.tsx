@@ -555,17 +555,6 @@ export default function AdminAnalytics() {
             текущих данных системы.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            void loadAnalytics()
-          }
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Обновить
-        </button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
