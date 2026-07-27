@@ -24,6 +24,7 @@ import {
   Building2,
   Settings,
   Loader2,
+  Newspaper,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -46,6 +47,7 @@ import AdminGroups from '../pages/dashboard/admin/AdminGroups';
 import AdminBranches from '../pages/dashboard/admin/AdminBranches';
 import AdminEducationPrograms from '../pages/dashboard/admin/AdminEducationPrograms';
 import AdminSchedule from '../pages/dashboard/admin/AdminSchedule';
+import AdminNews from '../pages/dashboard/admin/AdminNews';
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -249,6 +251,11 @@ const adminNav: NavItem[] = [
     icon: Calendar,
   },
   {
+    to: '/dashboard/news',
+    label: 'Новости',
+    icon: Newspaper,
+  },
+  {
     to: '/dashboard/progress',
     label: 'Аналитика',
     icon: TrendingUp,
@@ -430,6 +437,20 @@ export default function DashboardRouter() {
         <Route
           path="notifications"
           element={<Notifications />}
+        />
+
+        <Route
+          path="news"
+          element={
+            currentRole === 'admin'
+              ? <AdminNews />
+              : (
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              )
+          }
         />
 
         <Route
