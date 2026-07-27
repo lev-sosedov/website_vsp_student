@@ -34,6 +34,8 @@ import DashboardLayout from './dashboard/DashboardLayout';
 
 import StudentDashboard from '../pages/dashboard/student/StudentDashboard';
 import ParentDashboard from '../pages/dashboard/parent/ParentDashboard';
+import ParentAttendance from '../pages/dashboard/parent/ParentAttendance';
+
 import TeacherDashboard from '../pages/dashboard/teacher/TeacherDashboard';
 import TeacherHomeworkReview from '../pages/dashboard/teacher/TeacherHomeworkReview';
 import TeacherAttendance from '../pages/dashboard/teacher/TeacherAttendance';
@@ -440,7 +442,9 @@ export default function DashboardRouter() {
           element={
             currentRole === 'teacher'
               ? <TeacherAttendance />
-              : <Attendance />
+              : currentRole === 'parent'
+                ? <ParentAttendance />
+                : <Attendance />
           }
         />
 
