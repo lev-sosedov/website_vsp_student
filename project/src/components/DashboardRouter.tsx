@@ -25,6 +25,7 @@ import {
   Settings,
   Loader2,
   Newspaper,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -48,6 +49,9 @@ import AdminBranches from '../pages/dashboard/admin/AdminBranches';
 import AdminEducationPrograms from '../pages/dashboard/admin/AdminEducationPrograms';
 import AdminSchedule from '../pages/dashboard/admin/AdminSchedule';
 import AdminNews from '../pages/dashboard/admin/AdminNews';
+import AdminRoles from '../pages/dashboard/admin/AdminRoles';
+import AdminAnalytics from '../pages/dashboard/admin/AdminAnalytics';
+
 
 import Schedule from '../pages/dashboard/shared/Schedule';
 import Homework from '../pages/dashboard/shared/Homework';
@@ -256,6 +260,11 @@ const adminNav: NavItem[] = [
     icon: Newspaper,
   },
   {
+  to: '/dashboard/roles',
+  label: 'Роли',
+  icon: ShieldCheck,
+  },
+  {
     to: '/dashboard/progress',
     label: 'Аналитика',
     icon: TrendingUp,
@@ -426,7 +435,11 @@ export default function DashboardRouter() {
 
         <Route
           path="progress"
-          element={<Progress />}
+          element={
+            currentRole === 'admin'
+              ? <AdminAnalytics />
+              : <Progress />
+          }
         />
 
         <Route
@@ -504,6 +517,20 @@ export default function DashboardRouter() {
             currentRole === 'admin'
               ? <AdminEducationPrograms />
               : <Progress />
+          }
+        />
+
+        <Route
+          path="roles"
+          element={
+            currentRole === 'admin'
+              ? <AdminRoles />
+              : (
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              )
           }
         />
 
