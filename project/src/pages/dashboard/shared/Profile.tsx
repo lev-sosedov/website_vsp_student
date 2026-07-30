@@ -499,7 +499,7 @@ export default function Profile() {
                   htmlFor="profile-first-name"
                   className="text-xs font-medium text-gray-500"
                 >
-                  Имя
+                  Фмилию
                 </label>
                 <input
                   id="profile-first-name"
@@ -514,7 +514,7 @@ export default function Profile() {
                   maxLength={100}
                   disabled={isSaving}
                   className={inputClassName}
-                  placeholder="Введите имя"
+                  placeholder="Введите фамилию"
                 />
               </div>
 
@@ -523,7 +523,7 @@ export default function Profile() {
                   htmlFor="profile-last-name"
                   className="text-xs font-medium text-gray-500"
                 >
-                  Фамилия
+                  Отчество
                 </label>
                 <input
                   id="profile-last-name"
@@ -538,7 +538,7 @@ export default function Profile() {
                   maxLength={100}
                   disabled={isSaving}
                   className={inputClassName}
-                  placeholder="Введите фамилию"
+                  placeholder="Введите Отчество"
                 />
               </div>
 
@@ -547,7 +547,7 @@ export default function Profile() {
                   htmlFor="profile-user-name"
                   className="text-xs font-medium text-gray-500"
                 >
-                  Имя пользователя
+                  Имя
                 </label>
                 <input
                   id="profile-user-name"
@@ -563,7 +563,7 @@ export default function Profile() {
                   required
                   disabled={isSaving}
                   className={inputClassName}
-                  placeholder="Введите имя пользователя"
+                  placeholder="Введите имя"
                 />
               </div>
 
@@ -694,7 +694,7 @@ export default function Profile() {
           <div className="grid grid-cols-1 gap-6 pt-6 sm:grid-cols-2">
             <div>
               <label className="text-xs text-gray-400">
-                Имя
+                Фамилия
               </label>
 
               <p className="mt-1 text-sm font-medium text-gray-900">
@@ -714,7 +714,7 @@ export default function Profile() {
 
             <div>
               <label className="text-xs text-gray-400">
-                Имя пользователя
+                Имя
               </label>
 
               <p className="mt-1 text-sm font-medium text-gray-900">

@@ -36,6 +36,8 @@ import StudentDashboard from '../pages/dashboard/student/StudentDashboard';
 import ParentDashboard from '../pages/dashboard/parent/ParentDashboard';
 import ParentAttendance from '../pages/dashboard/parent/ParentAttendance';
 import ParentHomework from '../pages/dashboard/parent/ParentHomework';
+import ParentProgress from '../pages/dashboard/parent/ParentProgress';
+import ParentSchedule from '../pages/dashboard/parent/ParentSchedule';
 
 import TeacherDashboard from '../pages/dashboard/teacher/TeacherDashboard';
 import TeacherHomeworkReview from '../pages/dashboard/teacher/TeacherHomeworkReview';
@@ -416,18 +418,22 @@ export default function DashboardRouter() {
               ? <TeacherSchedule />
               : currentRole === 'admin'
                 ? <AdminSchedule />
-                : <Schedule />
+                  : currentRole === 'parent'
+                    ? <ParentSchedule />
+                    : <Schedule />
           }
         />
 
         <Route
-        path="homework"
-        element={
-          currentRole === 'parent'
-            ? <ParentHomework />
-            : <Homework />
-        }
-      />
+          path="homework"
+          element={
+            currentRole === 'teacher'
+              ? <TeacherHomeworkReview />
+              : currentRole === 'parent'
+                ? <ParentHomework />
+                : <Homework />
+          }
+        />
 
         <Route
           path="materials"
@@ -454,7 +460,9 @@ export default function DashboardRouter() {
           element={
             currentRole === 'admin'
               ? <AdminAnalytics />
-              : <Progress />
+              : currentRole === 'parent'
+                ? <ParentProgress />
+                : <Progress />
           }
         />
 

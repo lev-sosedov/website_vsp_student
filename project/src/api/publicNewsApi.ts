@@ -1,0 +1,193 @@
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:8080';
+
+export type PublicNewsPost = {
+  id: number;
+  post_type:
+    | 'post'
+    | 'important'
+    | 'event'
+    | 'achievement'
+    | 'article'
+    | string;
+  status: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  content: string | null;
+  category: string | null;
+  cover_media_url: string | null;
+  cover_preview_url: string | null;
+  is_pinned: boolean;
+  is_active: boolean;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type NewsListResponse = {
+  total: number;
+  items: PublicNewsPost[];
+};
+
+async function getErrorMessage(
+  response: Response
+): Promise<string> {
+  try {
+    const data = (await response.json()) as {
+      detail?: string;
+      message?: string;
+    };
+
+    return (
+      data.detail ??
+      data.message ??
+      `Не удалось загрузить новости: ${response.status}`
+    );
+  } catch {
+    const text = await response.text();
+
+    return (
+      text ||
+      `Не удалось загрузить новости: ${response.status}`
+    );
+  }
+}
+
+export async function getPublicNews(
+  limit = 500
+): Promise<PublicNewsPost[]> {
+  const searchParams =
+    new URLSearchParams();
+
+  searchParams.set(
+    'status',
+    'published'
+  );
+
+  searchParams.set(
+    'is_active',
+    'true'
+  );
+
+  searchParams.set(
+    'skip',
+    '0'
+  );
+
+  searchParams.set(
+    'limit',
+    String(limit)
+  );
+
+  const response = await fetch(
+    `${API_URL}/api/v1/posts?${searchParams.toString()}`,
+    {
+      headers: {
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response)
+    );
+  }
+
+  const data =
+    (await response.json()) as
+      | NewsListResponse
+      | PublicNewsPost[];
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  return data.items ?? [];
+}
+
+export function getNewsCategory(
+  post: PublicNewsPost
+): string {
+  const category =
+    post.category?.trim();
+
+  if (category) {
+    return category;
+  }
+
+  const labels: Record<string, string> = {
+    post: 'Новости школы',
+    important: 'Важное',
+    event: 'События',
+    achievement: 'Достижения',
+    article: 'Статьи',
+  };
+
+  return (
+    labels[post.post_type] ??
+    'Новости школы'
+  );
+}
+
+export function getNewsImage(
+  post: PublicNewsPost
+): string | null {
+  return (
+    post.cover_preview_url?.trim() ||
+    post.cover_media_url?.trim() ||
+    null
+  );
+}
+
+export function getNewsExcerpt(
+  post: PublicNewsPost
+): string {
+  const summary =
+    post.summary?.trim();
+
+  if (summary) {
+    return summary;
+  }
+
+  const content =
+    post.content
+      ?.replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() ?? '';
+
+  if (!content) {
+    return 'Подробности новости скоро появятся.';
+  }
+
+  return content.length > 220
+    ? `${content.slice(0, 217).trim()}...`
+    : content;
+}
+
+export function formatNewsDate(
+  post: PublicNewsPost
+): string {
+  const value =
+    post.published_at ??
+    post.created_at;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(
+    'ru-RU',
+    {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }
+  )
+    .format(date)
+    .replace(/\s*г\.$/, '');
+}

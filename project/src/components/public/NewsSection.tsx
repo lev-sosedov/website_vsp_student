@@ -1,49 +1,175 @@
+import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  ArrowRight,
+  ImageOff,
+  Loader2,
+} from 'lucide-react';
+
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
-import { news } from '../../data/mockData';
+
+import {
+  formatNewsDate,
+  getNewsCategory,
+  getNewsExcerpt,
+  getNewsImage,
+  getPublicNews,
+  type PublicNewsPost,
+} from '../../api/publicNewsApi';
+
+function NewsCover({
+  post,
+}: {
+  post: PublicNewsPost;
+}) {
+  const [imageError, setImageError] =
+    useState(false);
+
+  const imageUrl =
+    getNewsImage(post);
+
+  if (!imageUrl || imageError) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-red-50 to-gray-100">
+        <ImageOff className="h-9 w-9 text-gray-300" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={post.title}
+      loading="lazy"
+      onError={() =>
+        setImageError(true)
+      }
+      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+    />
+  );
+}
 
 export default function NewsSection() {
+  const [news, setNews] =
+    useState<PublicNewsPost[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNews() {
+      try {
+        const data =
+          await getPublicNews(3);
+
+        if (isMounted) {
+          setNews(
+            data.slice(0, 3)
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Не удалось загрузить новости для главной страницы:',
+          error
+        );
+
+        if (isMounted) {
+          setNews([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadNews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (!loading && news.length === 0) {
+    return null;
+  }
+
   return (
-    <section className="py-20 lg:py-28 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
+    <section className="bg-gray-50 py-20 lg:py-28">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-12 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <p className="text-red-600 text-sm font-semibold mb-2">Медиацентр</p>
-            <h2 className="section-title">Жизнь школы</h2>
+            <p className="mb-2 text-sm font-semibold text-red-600">
+              Медиацентр
+            </p>
+
+            <h2 className="section-title">
+              Жизнь школы
+            </h2>
           </div>
-          <Link to="/news" className="text-sm font-medium text-gray-900 hover:text-red-600 transition-colors inline-flex items-center gap-1">
-            Все, что вы пропустили <ArrowRight className="w-4 h-4" />
+
+          <Link
+            to="/news"
+            className="inline-flex items-center gap-1 text-sm font-medium text-gray-900 transition-colors hover:text-red-600"
+          >
+            Всё, что вы пропустили
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {news.map((item) => (
-            <article key={item.id} className="card overflow-hidden group cursor-pointer">
-              <div className="aspect-[16/10] overflow-hidden">
-                <img
-                  src={item.image}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-              </div>
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-xs font-semibold text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-                    {item.category}
-                  </span>
-                  <span className="text-xs text-gray-400">{item.date}</span>
-                </div>
-                <h3 className="font-bold text-lg text-gray-900 mb-2 group-hover:text-red-600 transition-colors">
-                  {item.title}
-                </h3>
-                <p className="text-sm text-gray-500 leading-relaxed mb-4">{item.excerpt}</p>
-                <span className="text-sm font-medium text-red-600 inline-flex items-center gap-1">
-                  Читать далее <ArrowRight className="w-4 h-4" />
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex min-h-[240px] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-red-600" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {news.map(
+              (post) => (
+                <article
+                  key={post.id}
+                  className="card group overflow-hidden"
+                >
+                  <div className="aspect-[16/10] overflow-hidden bg-gray-100">
+                    <NewsCover
+                      post={post}
+                    />
+                  </div>
+
+                  <div className="p-6">
+                    <div className="mb-3 flex flex-wrap items-center gap-3">
+                      <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600">
+                        {getNewsCategory(
+                          post
+                        )}
+                      </span>
+
+                      <span className="text-xs text-gray-400">
+                        {formatNewsDate(
+                          post
+                        )}
+                      </span>
+                    </div>
+
+                    <h3 className="mb-2 text-lg font-bold text-gray-900 transition-colors group-hover:text-red-600">
+                      {post.title}
+                    </h3>
+
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-gray-500">
+                      {getNewsExcerpt(
+                        post
+                      )}
+                    </p>
+                  </div>
+                </article>
+              )
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

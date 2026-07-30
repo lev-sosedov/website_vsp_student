@@ -73,7 +73,7 @@ export default function Footer() {
                   className="flex items-center gap-2 hover:text-red-600 transition-colors"
                 >
                   <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span>+7 (861) 000-00-00</span>
+                  <span>+7 (988) 199-75-59</span>
                 </a>
               </li>
 
@@ -143,6 +143,16 @@ export default function Footer() {
               className="text-sm text-gray-400 hover:text-red-600 transition-colors"
             >
               Телеграм
+            </a>
+
+                      
+            <a
+              href="https://www.youtube.com/@itprogerkrd"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-gray-400 hover:text-red-600 transition-colors"
+            >
+              YouTube
             </a>
           </div>
         </div>

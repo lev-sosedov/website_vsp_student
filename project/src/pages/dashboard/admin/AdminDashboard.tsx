@@ -364,7 +364,7 @@ export default function AdminDashboard() {
   );
 
   const [
-    updatedAt,
+    _updatedAt,
     setUpdatedAt,
   ] = useState<Date | null>(
     null
