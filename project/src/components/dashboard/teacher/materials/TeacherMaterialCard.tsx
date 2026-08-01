@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Send,
+  Trash2,
   Undo2,
   UserRound,
   Users,
@@ -37,6 +38,9 @@ interface TeacherMaterialCardProps {
     item: TeacherMaterialCardItem
   ) => void;
   onTogglePublication: (
+    item: TeacherMaterialCardItem
+  ) => Promise<void>;
+  onDeleteMaterial: (
     item: TeacherMaterialCardItem
   ) => Promise<void>;
   onAddAttachment: (
@@ -103,6 +107,7 @@ export default function TeacherMaterialCard({
   busyAction,
   onEditMaterial,
   onTogglePublication,
+  onDeleteMaterial,
   onAddAttachment,
   onEditAttachment,
   onToggleAttachmentVisibility,
@@ -183,6 +188,23 @@ export default function TeacherMaterialCard({
               Изменить
             </button>
 
+
+            <button
+              type="button"
+              onClick={() =>
+                void onDeleteMaterial(item)
+              }
+              disabled={busyAction !== null}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              {busyAction ===
+              `material-${content.id}-delete` ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Удалить
+            </button>
             <button
               type="button"
               onClick={() =>

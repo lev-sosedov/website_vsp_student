@@ -25,7 +25,7 @@ export interface MessageDirectoryPerson {
   userId: number;
   displayName: string;
   avatarUrl: string | null;
-  role: 'admin' | 'teacher' | 'student';
+  role: 'admin' | 'teacher' | 'parent' | 'student';
 }
 
 export interface MessageGroupDirectory {
@@ -399,7 +399,9 @@ export async function openOrCreatePrivateChat(
         ? 'Личный чат с администрацией'
         : target.role === 'teacher'
           ? 'Личный чат с преподавателем'
-          : 'Личный чат студентов',
+          : target.role === 'parent'
+            ? 'Личный чат с родителем'
+            : 'Личный чат студентов',
     created_by: currentUserId,
   });
 

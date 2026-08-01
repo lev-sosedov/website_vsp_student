@@ -250,8 +250,10 @@ function calculateAttendance(
   const present =
     items.filter(
       (item) =>
-        item.attendance
-          .status === 'present'
+        item.attendance.status ===
+          'present' ||
+        item.attendance.status ===
+          'remote'
     ).length;
 
   const late =

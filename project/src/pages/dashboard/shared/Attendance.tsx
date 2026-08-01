@@ -52,6 +52,7 @@ const statusLabels: Record<
   string
 > = {
   present: 'Присутствовал',
+  remote: 'Присутствовал дистанционно',
   absent: 'Отсутствовал',
   late: 'Опоздал',
   excused: 'Уважительная причина',
@@ -63,6 +64,9 @@ const statusClasses: Record<
 > = {
   present:
     'bg-green-50 text-green-700 border-green-200',
+
+  remote:
+    'bg-violet-50 text-violet-700 border-violet-200',
 
   absent:
     'bg-red-50 text-red-700 border-red-200',
@@ -378,7 +382,8 @@ export default function Attendance() {
   const statistics = useMemo(() => {
     const present = rows.filter(
       ({ attendance }) =>
-        attendance.status === 'present'
+        attendance.status === 'present' ||
+        attendance.status === 'remote'
     ).length;
 
     const absent = rows.filter(

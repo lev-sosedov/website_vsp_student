@@ -1037,6 +1037,12 @@ export default function AdminStudents() {
         onDelete={() =>
           void handleDelete()
         }
+        showParentContacts
+        onMessageParent={(parentLink) =>
+          navigate(
+            `/dashboard/messages?contactUserId=${parentLink.parent.id}&contactRole=parent`
+          )
+        }
       />
     </div>
   );

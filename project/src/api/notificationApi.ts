@@ -211,3 +211,72 @@ export async function markAllNotificationsAsRead(
 
   return result;
 }
+
+export interface NotificationPreference {
+  id: number;
+  user_id: number;
+
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  push_enabled: boolean;
+  telegram_enabled: boolean;
+
+  schedule_enabled: boolean;
+  lesson_enabled: boolean;
+  homework_enabled: boolean;
+  homework_result_enabled: boolean;
+  chat_enabled: boolean;
+  news_enabled: boolean;
+
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  timezone: string;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export type NotificationPreferenceBooleanField =
+  | 'in_app_enabled'
+  | 'email_enabled'
+  | 'push_enabled'
+  | 'telegram_enabled'
+  | 'schedule_enabled'
+  | 'lesson_enabled'
+  | 'homework_enabled'
+  | 'homework_result_enabled'
+  | 'chat_enabled'
+  | 'news_enabled';
+
+export type NotificationPreferenceUpdate = Partial<
+  Pick<
+    NotificationPreference,
+    NotificationPreferenceBooleanField |
+      'quiet_hours_enabled' |
+      'quiet_hours_start' |
+      'quiet_hours_end' |
+      'timezone'
+  >
+>;
+
+export async function getNotificationPreference(
+  userId: number
+): Promise<NotificationPreference> {
+  return notificationRequest<NotificationPreference>(
+    `/api/v1/notification-preferences/${userId}`
+  );
+}
+
+export async function updateNotificationPreference(
+  userId: number,
+  data: NotificationPreferenceUpdate
+): Promise<NotificationPreference> {
+  return notificationRequest<NotificationPreference>(
+    `/api/v1/notification-preferences/${userId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}

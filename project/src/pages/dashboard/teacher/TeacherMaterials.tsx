@@ -24,6 +24,7 @@ import {
   createLessonContent,
   createLessonLink,
   deleteLessonAttachment,
+  deleteLessonContent,
   deleteLessonLink,
   getLessonAttachments,
   getLessonContents,
@@ -143,6 +144,12 @@ function getResourceInitialValues(
         state.attachment.sort_order,
       isVisible:
         state.attachment.is_visible,
+      fileName:
+        state.attachment.file_name,
+      mimeType:
+        state.attachment.mime_type,
+      fileSize:
+        state.attachment.file_size,
     };
   }
 
@@ -155,6 +162,9 @@ function getResourceInitialValues(
       attachmentType: 'other',
       sortOrder: state.link.sort_order,
       isVisible: state.link.is_visible,
+      fileName: null,
+      mimeType: null,
+      fileSize: null,
     };
   }
 
@@ -649,11 +659,12 @@ export default function TeacherMaterials() {
               values.attachmentType,
             file_url: values.url,
             file_name:
+              values.fileName ??
               getFileNameFromUrl(
                 values.url
               ),
-            mime_type: null,
-            file_size: null,
+            mime_type: values.mimeType,
+            file_size: values.fileSize,
             sort_order:
               values.sortOrder,
             is_visible:
@@ -678,9 +689,12 @@ export default function TeacherMaterials() {
                 values.attachmentType,
               file_url: values.url,
               file_name:
+                values.fileName ??
                 getFileNameFromUrl(
                   values.url
                 ),
+              mime_type: values.mimeType,
+              file_size: values.fileSize,
               sort_order:
                 values.sortOrder,
               updated_by: teacherId,
@@ -754,6 +768,41 @@ export default function TeacherMaterials() {
       );
     } finally {
       setIsModalSaving(false);
+    }
+  };
+
+  const handleDeleteMaterial = async (
+    item: TeacherMaterialCardItem
+  ) => {
+    if (
+      !window.confirm(
+        `Удалить материал «${item.content.title}»? Он будет откреплён от занятия вместе со ссылками и вложениями.`
+      )
+    ) {
+      return;
+    }
+
+    const action =
+      `material-${item.content.id}-delete`;
+
+    try {
+      setBusyAction(action);
+      setError(null);
+
+      await deleteLessonContent(
+        item.content.id,
+        teacherId
+      );
+
+      showSuccess(
+        'Материал удалён и откреплён от занятия'
+      );
+
+      await loadMaterials(false);
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError));
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -1108,6 +1157,9 @@ export default function TeacherMaterials() {
               }}
               onTogglePublication={
                 handleTogglePublication
+              }
+              onDeleteMaterial={
+                handleDeleteMaterial
               }
               onAddAttachment={(
                 selectedItem

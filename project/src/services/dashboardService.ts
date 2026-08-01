@@ -336,7 +336,9 @@ function calculateAttendancePercentage(
   );
 
   const presentCount = activeRecords.filter(
-    (record) => record.status === 'present'
+    (record) =>
+      record.status === 'present' ||
+      record.status === 'remote'
   ).length;
 
   const absentCount = activeRecords.filter(

@@ -11,6 +11,9 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  Download,
+  FileSpreadsheet,
+  FileText,
   Loader2,
   Save,
   Users,
@@ -33,16 +36,30 @@ import {
 
 import {
   getGroupLessons,
+  getGroupLessonsByDateRange,
   type LessonSchedule,
 } from '../../../api/scheduleApi';
 
 import {
   createAttendance,
   getLessonAttendance,
+  getStudentAttendance,
   updateAttendance,
   type AttendanceRecord,
   type AttendanceStatus,
 } from '../../../api/attendanceApi';
+
+
+import {
+  downloadAttendanceExcel,
+  getAttendanceDateRange,
+  getCurrentIsoWeekValue,
+  getCurrentMonthValue,
+  renderAttendancePdf,
+  toIsoWeekInputValue,
+  type AttendanceExportPeriodType,
+  type AttendanceExportReport,
+} from '../../../services/attendanceExportService';
 
 interface TeacherGroupOption {
   membershipId: number;
@@ -75,6 +92,14 @@ const statusOptions: Array<{
     activeClassName:
       'border-green-500 bg-green-50 text-green-700 ring-1 ring-green-500',
     dotClassName: 'bg-green-500',
+  },
+  {
+    value: 'remote',
+    label: 'Присутствовал дистанционно',
+    shortLabel: 'Дистант',
+    activeClassName:
+      'border-violet-500 bg-violet-50 text-violet-700 ring-1 ring-violet-500',
+    dotClassName: 'bg-violet-500',
   },
   {
     value: 'absent',
@@ -242,6 +267,34 @@ export default function TeacherAttendance() {
     setSuccessMessage,
   ] = useState<string | null>(null);
 
+
+  const [
+    exportStudentId,
+    setExportStudentId,
+  ] = useState<number | null>(null);
+
+  const [
+    exportPeriodType,
+    setExportPeriodType,
+  ] = useState<AttendanceExportPeriodType>(
+    'week'
+  );
+
+  const [
+    exportWeek,
+    setExportWeek,
+  ] = useState(getCurrentIsoWeekValue());
+
+  const [
+    exportMonth,
+    setExportMonth,
+  ] = useState(getCurrentMonthValue());
+
+  const [
+    exportingFormat,
+    setExportingFormat,
+  ] = useState<'excel' | 'pdf' | null>(null);
+
   const selectedGroup = useMemo(
     () =>
       groups.find(
@@ -266,12 +319,51 @@ export default function TeacherAttendance() {
     ]
   );
 
+  useEffect(() => {
+    if (students.length === 0) {
+      setExportStudentId(null);
+      return;
+    }
+
+    if (
+      exportStudentId === null ||
+      !students.some(
+        (student) =>
+          student.user_id === exportStudentId
+      )
+    ) {
+      setExportStudentId(
+        students[0].user_id
+      );
+    }
+  }, [
+    exportStudentId,
+    students,
+  ]);
+
+  useEffect(() => {
+    if (!selectedLesson?.lesson_date) {
+      return;
+    }
+
+    setExportWeek(
+      toIsoWeekInputValue(
+        selectedLesson.lesson_date
+      )
+    );
+
+    setExportMonth(
+      selectedLesson.lesson_date.slice(0, 7)
+    );
+  }, [selectedLesson?.lesson_date]);
+
   const attendanceSummary = useMemo(() => {
     const summary: Record<
       AttendanceStatus,
       number
     > = {
       present: 0,
+      remote: 0,
       absent: 0,
       late: 0,
       excused: 0,
@@ -668,6 +760,180 @@ export default function TeacherAttendance() {
     );
   }
 
+  async function createExportReport():
+  Promise<AttendanceExportReport> {
+    if (!selectedGroupId) {
+      throw new Error(
+        'Сначала выберите группу'
+      );
+    }
+
+    if (!exportStudentId) {
+      throw new Error(
+        'Выберите студента для выгрузки'
+      );
+    }
+
+    const periodValue =
+      exportPeriodType === 'week'
+        ? exportWeek
+        : exportMonth;
+
+    const dateRange =
+      getAttendanceDateRange(
+        exportPeriodType,
+        periodValue
+      );
+
+    const [
+      periodLessonsResponse,
+      attendanceResponse,
+    ] = await Promise.all([
+      getGroupLessonsByDateRange(
+        selectedGroupId,
+        dateRange.dateFrom,
+        dateRange.dateTo
+      ),
+      getStudentAttendance(
+        exportStudentId,
+        0,
+        500
+      ),
+    ]);
+
+    const periodLessons =
+      periodLessonsResponse
+        .filter(
+          (lesson) =>
+            lesson.status !== 'cancelled'
+        )
+        .sort((first, second) => {
+          const firstValue =
+            `${first.lesson_date} ${first.start_time}`;
+
+          const secondValue =
+            `${second.lesson_date} ${second.start_time}`;
+
+          return firstValue.localeCompare(
+            secondValue
+          );
+        });
+
+    if (periodLessons.length === 0) {
+      throw new Error(
+        'В выбранном периоде нет занятий группы'
+      );
+    }
+
+    const recordsByLessonId = new Map(
+      attendanceResponse.items.map(
+        (record) => [
+          record.lesson_id,
+          record,
+        ]
+      )
+    );
+
+    const student = students.find(
+      (item) =>
+        item.user_id === exportStudentId
+    );
+
+    if (!student) {
+      throw new Error(
+        'Выбранный студент не найден в группе'
+      );
+    }
+
+    return {
+      studentName: getStudentName(student),
+      groupName:
+        selectedGroup?.group.name ??
+        `Группа №${selectedGroupId}`,
+      periodLabel: dateRange.label,
+      generatedAt: new Date().toISOString(),
+      rows: periodLessons.map((lesson) => {
+        const record =
+          recordsByLessonId.get(lesson.id);
+
+        return {
+          lessonDate: lesson.lesson_date,
+          startTime: lesson.start_time,
+          endTime: lesson.end_time,
+          topic:
+            lesson.topic?.trim() ||
+            'Без темы',
+          status: record?.status ?? null,
+          lateMinutes:
+            record?.late_minutes ?? 0,
+          comment:
+            record?.comment?.trim() ?? '',
+        };
+      }),
+    };
+  }
+
+  async function handleExport(
+    format: 'excel' | 'pdf'
+  ) {
+    let printWindow: Window | null = null;
+
+    if (format === 'pdf') {
+      printWindow = window.open(
+        '',
+        '_blank',
+        'width=1200,height=850'
+      );
+
+      if (!printWindow) {
+        setError(
+          'Браузер заблокировал окно PDF. Разрешите всплывающие окна для сайта.'
+        );
+        return;
+      }
+
+      printWindow.document.write(
+        '<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Подготовка PDF</title></head><body style="font-family:Arial,sans-serif;padding:32px">Подготавливаем отчёт посещаемости…</body></html>'
+      );
+    }
+
+    try {
+      setExportingFormat(format);
+      setError(null);
+      setSuccessMessage(null);
+
+      const report =
+        await createExportReport();
+
+      if (format === 'excel') {
+        downloadAttendanceExcel(report);
+
+        setSuccessMessage(
+          'Файл Excel сформирован'
+        );
+      } else if (printWindow) {
+        renderAttendancePdf(
+          report,
+          printWindow
+        );
+
+        setSuccessMessage(
+          'Открыта печатная форма. Выберите «Сохранить как PDF».'
+        );
+      }
+    } catch (exportError) {
+      printWindow?.close();
+
+      setError(
+        `Не удалось сформировать отчёт: ${getErrorMessage(
+          exportError
+        )}`
+      );
+    } finally {
+      setExportingFormat(null);
+    }
+  }
+
   async function handleSave() {
     if (!selectedLessonId) {
       setError('Сначала выберите занятие');
@@ -944,8 +1210,184 @@ export default function TeacherAttendance() {
         </label>
       </div>
 
+      {selectedGroupId && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <Download className="h-5 w-5" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-gray-900">
+                Выгрузка посещаемости студента
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Выберите студента и нужную неделю или месяц.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_220px_240px_auto] lg:items-end">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">
+                Студент
+              </span>
+
+              <div className="relative">
+                <select
+                  value={exportStudentId ?? ''}
+                  onChange={(event) => {
+                    const value = Number(
+                      event.target.value
+                    );
+
+                    setExportStudentId(
+                      Number.isInteger(value) &&
+                        value > 0
+                        ? value
+                        : null
+                    );
+                  }}
+                  disabled={
+                    students.length === 0 ||
+                    loadingJournal ||
+                    exportingFormat !== null
+                  }
+                  className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-4 py-3 pr-10 text-sm text-gray-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  {students.length === 0 ? (
+                    <option value="">
+                      Студенты не найдены
+                    </option>
+                  ) : (
+                    students.map((student) => (
+                      <option
+                        key={student.user_id}
+                        value={student.user_id}
+                      >
+                        {getStudentName(student)}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">
+                Период
+              </span>
+
+              <div className="relative">
+                <select
+                  value={exportPeriodType}
+                  onChange={(event) =>
+                    setExportPeriodType(
+                      event.target.value as
+                        AttendanceExportPeriodType
+                    )
+                  }
+                  disabled={exportingFormat !== null}
+                  className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-4 py-3 pr-10 text-sm text-gray-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-50"
+                >
+                  <option value="week">
+                    Неделя
+                  </option>
+                  <option value="month">
+                    Месяц
+                  </option>
+                </select>
+
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">
+                {exportPeriodType === 'week'
+                  ? 'Какая неделя'
+                  : 'Какой месяц'}
+              </span>
+
+              <input
+                type={
+                  exportPeriodType === 'week'
+                    ? 'week'
+                    : 'month'
+                }
+                value={
+                  exportPeriodType === 'week'
+                    ? exportWeek
+                    : exportMonth
+                }
+                onChange={(event) => {
+                  if (
+                    exportPeriodType === 'week'
+                  ) {
+                    setExportWeek(
+                      event.target.value
+                    );
+                  } else {
+                    setExportMonth(
+                      event.target.value
+                    );
+                  }
+                }}
+                disabled={exportingFormat !== null}
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-50"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleExport('excel');
+                }}
+                disabled={
+                  exportingFormat !== null ||
+                  !exportStudentId ||
+                  students.length === 0
+                }
+                className="inline-flex min-w-36 items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportingFormat === 'excel' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4" />
+                )}
+                Excel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void handleExport('pdf');
+                }}
+                disabled={
+                  exportingFormat !== null ||
+                  !exportStudentId ||
+                  students.length === 0
+                }
+                className="inline-flex min-w-36 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportingFormat === 'pdf' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedLesson && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           {statusOptions.map((option) => (
             <div
               key={option.value}
@@ -1104,7 +1546,7 @@ export default function TeacherAttendance() {
                         </div>
                       </div>
 
-                      <div className="grid flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="grid flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
                         {statusOptions.map(
                           (option) => {
                             const active =

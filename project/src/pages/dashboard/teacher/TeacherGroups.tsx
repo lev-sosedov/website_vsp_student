@@ -36,6 +36,11 @@ import {
 } from '../../../api/userApi';
 
 import {
+  getRoom,
+  getScheduleTemplates,
+} from '../../../api/scheduleApi';
+
+import {
   openOrCreatePrivateChat,
   type MessageDirectoryPerson,
 } from '../../../services/messageDirectoryService';
@@ -56,10 +61,8 @@ interface TeacherGroupItem {
   students: GroupStudent[];
   direction: AcademicDirection | null;
   educationPlan: AcademicEducationPlanResponse | null;
-  branchDisplayName: string;
   branchName: string;
-  fullAddress: string;
-  auditoriumName: string;
+  roomName: string;
 }
 
 interface AcademicEducationPlanResponse {
@@ -99,7 +102,6 @@ interface BranchAddressResponse {
   building?: string | number | null;
 }
 
-
 interface UserProfileResponse {
   id: number;
   user_name?: string | null;
@@ -108,8 +110,9 @@ interface UserProfileResponse {
   avatar_url?: string | null;
 }
 
-
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:8080';
 
 function getAccessToken(): string | null {
   return (
@@ -179,17 +182,16 @@ async function getEducationPlan(
 
   for (const endpoint of candidateEndpoints) {
     try {
-      return await academicRequest<AcademicEducationPlanResponse>(
-        endpoint
-      );
+      return await academicRequest<
+        AcademicEducationPlanResponse
+      >(endpoint);
     } catch {
-      // Gateway может использовать один из двух вариантов пути.
+      // Gateway может использовать один из двух путей.
     }
   }
 
   return null;
 }
-
 
 async function getUserProfile(
   userId: number
@@ -201,11 +203,11 @@ async function getUserProfile(
 
   for (const endpoint of candidateEndpoints) {
     try {
-      return await academicRequest<UserProfileResponse>(
-        endpoint
-      );
+      return await academicRequest<
+        UserProfileResponse
+      >(endpoint);
     } catch {
-      // Пробуем следующий поддерживаемый маршрут Gateway.
+      // Пробуем следующий поддерживаемый маршрут.
     }
   }
 
@@ -254,8 +256,28 @@ async function enrichGroupStudents(
   );
 }
 
+function normalizeStreetName(
+  value: string
+): string {
+  return value
+    .replace(
+      /^(ул\.?|улица|проспект|пр-т|переулок|пер\.?|шоссе|бульвар|наб\.?|набережная)\s+/i,
+      ''
+    )
+    .replace(
+      /\s+(д\.?|дом)\s*\d+[А-Яа-яA-Za-z\d/-]*.*$/i,
+      ''
+    )
+    .replace(
+      /,?\s*\d+[А-Яа-яA-Za-z\d/-]*\s*$/,
+      ''
+    )
+    .trim();
+}
+
 function extractStreetName(
-  value: string | null | undefined
+  value: string | null | undefined,
+  city: string | null | undefined
 ): string | null {
   const address = value?.trim();
 
@@ -268,34 +290,60 @@ function extractStreetName(
     .map((part) => part.trim())
     .filter(Boolean);
 
-  const streetPart =
-    parts.find((part) =>
-      /(^|\s)(ул\.?|улица|проспект|пр-т|переулок|пер\.?|шоссе|бульвар|наб\.?|набережная)\s/i.test(
-        part
-      )
-    ) ??
-    parts.find((part) =>
-      /[А-Яа-яЁёA-Za-z]/.test(part) &&
-      !/^\d{5,6}$/.test(part) &&
-      !/^(Россия|РФ|край|область|республика|город|г\.)\b/i.test(
-        part
-      )
-    );
+  const explicitStreet = parts.find((part) =>
+    /^(ул\.?|улица|проспект|пр-т|переулок|пер\.?|шоссе|бульвар|наб\.?|набережная)\s+/i.test(
+      part
+    )
+  );
 
-  if (!streetPart) {
-    return null;
+  if (explicitStreet) {
+    return normalizeStreetName(
+      explicitStreet
+    );
   }
 
-  return streetPart
-    .replace(
-      /\s+(д\.?|дом)\s*\d+[А-Яа-яA-Za-z\d/-]*.*$/i,
-      ''
-    )
-    .replace(
-      /,?\s*\d+[А-Яа-яA-Za-z\d/-]*\s*$/,
-      ''
-    )
-    .trim();
+  const normalizedCity =
+    city?.trim().toLocaleLowerCase('ru-RU');
+
+  const candidates = parts.filter((part) => {
+    const normalized =
+      part.toLocaleLowerCase('ru-RU');
+
+    if (
+      normalizedCity &&
+      normalized === normalizedCity
+    ) {
+      return false;
+    }
+
+    if (
+      /^(россия|рф|краснодарский край|край|область|республика)$/i.test(
+        part
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      /^(г\.?|город)\s/i.test(part) ||
+      /^(д\.?|дом)\s*\d/i.test(part) ||
+      /^(стр\.?|строение|корпус)\s/i.test(part) ||
+      /^\d{5,6}$/.test(part)
+    ) {
+      return false;
+    }
+
+    return /[А-Яа-яЁёA-Za-z]/.test(part);
+  });
+
+  const candidate =
+    candidates.length > 1
+      ? candidates[candidates.length - 1]
+      : candidates[0];
+
+  return candidate
+    ? normalizeStreetName(candidate)
+    : null;
 }
 
 function getBranchStreet(
@@ -307,73 +355,28 @@ function getBranchStreet(
     address?.street_name?.trim();
 
   if (directStreet) {
-    return directStreet;
+    return normalizeStreetName(
+      directStreet
+    );
   }
 
   return (
     extractStreetName(
       address?.full_address ??
       address?.address ??
-      branch?.address
+      branch?.address,
+      address?.city
     ) ??
     branch?.name?.trim() ??
     branch?.title?.trim() ??
     branch?.short_name?.trim() ??
-    'не указан'
+    'Не указан'
   );
 }
 
-function getBranchDisplayName(
-  branch: AcademicBranchResponse | null,
-  groupBranchId: number | null | undefined
-): string {
-  return (
-    branch?.name?.trim() ||
-    branch?.title?.trim() ||
-    branch?.short_name?.trim() ||
-    (groupBranchId
-      ? `Филиал №${groupBranchId}`
-      : 'Не указан')
-  );
-}
-
-function getFullAddress(
-  branch: AcademicBranchResponse | null,
-  address: BranchAddressResponse | null
-): string {
-  const fullAddress =
-    address?.full_address?.trim() ||
-    address?.address?.trim() ||
-    branch?.address?.trim();
-
-  if (fullAddress) {
-    return fullAddress;
-  }
-
-  const addressParts = [
-    address?.city,
-    address?.street ?? address?.street_name,
-    address?.house
-      ? `дом ${address.house}`
-      : null,
-    address?.building
-      ? `строение ${address.building}`
-      : null,
-  ]
-    .map((value) =>
-      value === null || value === undefined
-        ? ''
-        : String(value).trim()
-    )
-    .filter(Boolean);
-
-  return addressParts.join(', ') || 'Не указан';
-}
-
-function getAuditoriumName(
-  branch: AcademicBranchResponse | null,
-  fallbackId: number | null | undefined
-): string {
+function getBranchRoomFallback(
+  branch: AcademicBranchResponse | null
+): string | null {
   const branchValue =
     branch?.auditorium ??
     branch?.auditorium_number ??
@@ -394,11 +397,64 @@ function getAuditoriumName(
     return String(branchValue);
   }
 
-  return fallbackId
-    ? String(fallbackId)
-    : 'не указана';
+  return null;
 }
-function getErrorMessage(error: unknown): string {
+
+async function getPrimaryGroupRoomName(
+  groupId: number,
+  branch: AcademicBranchResponse | null
+): Promise<string> {
+  try {
+    const templates =
+      await getScheduleTemplates({
+        groupId,
+        isActive: true,
+        limit: 500,
+      });
+
+    const roomCounts =
+      new Map<number, number>();
+
+    templates.forEach((template) => {
+      roomCounts.set(
+        template.room_id,
+        (roomCounts.get(template.room_id) ?? 0) + 1
+      );
+    });
+
+    const primaryRoomId =
+      Array.from(roomCounts.entries())
+        .sort(
+          (first, second) =>
+            second[1] - first[1]
+        )[0]?.[0];
+
+    if (primaryRoomId) {
+      const room =
+        await getRoom(primaryRoomId);
+
+      if (room.name?.trim()) {
+        return room.name.trim();
+      }
+
+      return `Кабинет №${primaryRoomId}`;
+    }
+  } catch (roomError) {
+    console.error(
+      `Не удалось определить кабинет группы ${groupId}:`,
+      roomError
+    );
+  }
+
+  return (
+    getBranchRoomFallback(branch) ??
+    'Не указан'
+  );
+}
+
+function getErrorMessage(
+  error: unknown
+): string {
   if (error instanceof Error) {
     return error.message;
   }
@@ -406,40 +462,33 @@ function getErrorMessage(error: unknown): string {
   return 'Произошла неизвестная ошибка';
 }
 
-function getStudentName(student: GroupStudent): string {
-  const studentName = [
+function getStudentName(
+  student: GroupStudent
+): string {
+  const fullName = [
     student.first_name,
     student.user_name,
-  ]
-    .filter(
-      (value): value is string =>
-        Boolean(value?.trim())
-    )
-    .map((value) => value.trim())
-    .join(' ');
-
-  if (studentName) {
-    return studentName;
-  }
-
-  const legacyName = [
     student.last_name,
-    student.first_name,
   ]
     .filter(
       (value): value is string =>
         Boolean(value?.trim())
     )
     .map((value) => value.trim())
-    .join(' ');
+    .join(' ')
+    .trim();
 
-  return legacyName || `Студент №${student.user_id}`;
+  return (
+    fullName ||
+    `Студент №${student.user_id}`
+  );
 }
 
 function getEducationPlanName(
   educationPlan:
     AcademicEducationPlanResponse | null,
-  educationPlanId: number | null | undefined
+  educationPlanId:
+    number | null | undefined
 ): string {
   return (
     educationPlan?.name?.trim() ||
@@ -451,7 +500,8 @@ function getEducationPlanName(
 }
 
 function formatEducationPlanDuration(
-  durationMonths: number | null | undefined
+  durationMonths:
+    number | null | undefined
 ): string {
   if (
     !durationMonths ||
@@ -462,6 +512,7 @@ function formatEducationPlanDuration(
 
   const lastTwoDigits =
     durationMonths % 100;
+
   const lastDigit =
     durationMonths % 10;
 
@@ -475,8 +526,10 @@ function formatEducationPlanDuration(
   } else if (
     lastDigit >= 2 &&
     lastDigit <= 4 &&
-    (lastTwoDigits < 12 ||
-      lastTwoDigits > 14)
+    (
+      lastTwoDigits < 12 ||
+      lastTwoDigits > 14
+    )
   ) {
     monthWord = 'месяца';
   }
@@ -491,10 +544,11 @@ function formatGroupDate(
     return 'Не указана';
   }
 
-  const [year, month, day] = dateValue
-    .slice(0, 10)
-    .split('-')
-    .map(Number);
+  const [year, month, day] =
+    dateValue
+      .slice(0, 10)
+      .split('-')
+      .map(Number);
 
   if (
     !Number.isFinite(year) ||
@@ -504,23 +558,41 @@ function formatGroupDate(
     return dateValue;
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(year, month - 1, day));
+  return new Intl.DateTimeFormat(
+    'ru-RU',
+    {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }
+  ).format(
+    new Date(
+      year,
+      month - 1,
+      day
+    )
+  );
 }
 
 export default function TeacherGroups() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const {
-    user,
-  } = useAuth();
+  const [
+    groups,
+    setGroups,
+  ] = useState<TeacherGroupItem[]>([]);
 
-  const [groups, setGroups] = useState<TeacherGroupItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    error,
+    setError,
+  ] = useState<string | null>(null);
+
   const [
     actionError,
     setActionError,
@@ -564,173 +636,207 @@ export default function TeacherGroups() {
     setOpeningMessageStudentId,
   ] = useState<number | null>(null);
 
-  const loadGroups = useCallback(async () => {
-    if (!user?.id) {
-      setGroups([]);
-      setLoading(false);
-      setError('Не удалось определить текущего преподавателя');
-      return;
-    }
+  const loadGroups =
+    useCallback(async () => {
+      if (!user?.id) {
+        setGroups([]);
+        setLoading(false);
+        setError(
+          'Не удалось определить текущего преподавателя'
+        );
+        return;
+      }
 
-    const userId = Number(user.id);
+      const userId =
+        Number(user.id);
 
-    if (!Number.isFinite(userId)) {
-      setGroups([]);
-      setLoading(false);
-      setError('Некорректный ID текущего преподавателя');
-      return;
-    }
+      if (!Number.isFinite(userId)) {
+        setGroups([]);
+        setLoading(false);
+        setError(
+          'Некорректный ID текущего преподавателя'
+        );
+        return;
+      }
 
-    try {
-      setLoading(true);
-      setError(null);
+      try {
+        setLoading(true);
+        setError(null);
 
-      const memberships = await getActiveUserGroups(userId);
+        const memberships =
+          await getActiveUserGroups(userId);
 
-      const teacherMemberships = memberships.filter(
-        (membership) =>
-          membership.role === 'teacher' ||
-          membership.role === 'assistant'
-      );
+        const teacherMemberships =
+          memberships.filter(
+            (membership) =>
+              membership.role === 'teacher' ||
+              membership.role === 'assistant'
+          );
 
-      const branchAddresses =
-        await getBranchAddresses().catch(
-          (addressError) => {
-            console.error(
-              'Не удалось загрузить адреса филиалов:',
-              addressError
-            );
+        const branchAddresses =
+          await getBranchAddresses().catch(
+            (addressError) => {
+              console.error(
+                'Не удалось загрузить адреса филиалов:',
+                addressError
+              );
 
-            return [];
-          }
+              return [];
+            }
+          );
+
+        const loadedGroups =
+          await Promise.all(
+            teacherMemberships.map(
+              async (membership) => {
+                const [
+                  group,
+                  studentResponse,
+                ] = await Promise.all([
+                  getGroup(
+                    membership.group_id
+                  ),
+                  getGroupStudents(
+                    membership.group_id
+                  ),
+                ]);
+
+                const [
+                  direction,
+                  branch,
+                  educationPlan,
+                ] = await Promise.all([
+                  group.direction_id
+                    ? getDirection(
+                        group.direction_id
+                      ).catch(
+                        (
+                          directionError
+                        ) => {
+                          console.error(
+                            `Не удалось загрузить направление группы ${group.id}:`,
+                            directionError
+                          );
+
+                          return null;
+                        }
+                      )
+                    : Promise.resolve(
+                        null
+                      ),
+
+                  group.branch_id
+                    ? getBranch(
+                        group.branch_id
+                      ).catch(
+                        (branchError) => {
+                          console.error(
+                            `Не удалось загрузить филиал группы ${group.id}:`,
+                            branchError
+                          );
+
+                          return null;
+                        }
+                      )
+                    : Promise.resolve(
+                        null
+                      ),
+
+                  group.education_plan_id
+                    ? getEducationPlan(
+                        group.education_plan_id
+                      )
+                    : Promise.resolve(
+                        null
+                      ),
+                ]);
+
+                const branchAddressId =
+                  branch
+                    ?.branch_address_id ??
+                  branch?.address_id ??
+                  null;
+
+                const branchAddress =
+                  branchAddresses.find(
+                    (address) =>
+                      (
+                        branchAddressId !==
+                          null &&
+                        address.id ===
+                          branchAddressId
+                      ) ||
+                      address.branch_id ===
+                        group.branch_id
+                  ) ?? null;
+
+                const activeStudents =
+                  studentResponse.items.filter(
+                    (student) =>
+                      student.is_active
+                  );
+
+                const [
+                  enrichedStudents,
+                  roomName,
+                ] = await Promise.all([
+                  enrichGroupStudents(
+                    activeStudents
+                  ),
+                  getPrimaryGroupRoomName(
+                    group.id,
+                    branch
+                  ),
+                ]);
+
+                return {
+                  membershipId:
+                    membership.id,
+                  group,
+                  students:
+                    enrichedStudents,
+                  direction,
+                  educationPlan,
+                  branchName:
+                    getBranchStreet(
+                      branch,
+                      branchAddress
+                    ),
+                  roomName,
+                };
+              }
+            )
+          );
+
+        loadedGroups.sort(
+          (
+            firstGroup,
+            secondGroup
+          ) =>
+            firstGroup.group.name
+              .localeCompare(
+                secondGroup.group.name,
+                'ru'
+              )
         );
 
-      const loadedGroups = await Promise.all(
-        teacherMemberships.map(async (membership) => {
-          const [
-            group,
-            studentResponse,
-          ] = await Promise.all([
-            getGroup(membership.group_id),
-            getGroupStudents(membership.group_id),
-          ]);
+        setGroups(
+          loadedGroups
+        );
+      } catch (loadError) {
+        console.error(
+          'Не удалось загрузить группы преподавателя:',
+          loadError
+        );
 
-          const [
-            direction,
-            branch,
-            educationPlan,
-          ] =
-            await Promise.all([
-              group.direction_id
-                ? getDirection(group.direction_id).catch(
-                    (directionError) => {
-                      console.error(
-                        `Не удалось загрузить направление группы ${group.id}:`,
-                        directionError
-                      );
-
-                      return null;
-                    }
-                  )
-                : Promise.resolve(null),
-
-              group.branch_id
-                ? getBranch(group.branch_id).catch(
-                    (branchError) => {
-                      console.error(
-                        `Не удалось загрузить филиал группы ${group.id}:`,
-                        branchError
-                      );
-
-                      return null;
-                    }
-                  )
-                : Promise.resolve(null),
-
-              group.education_plan_id
-                ? getEducationPlan(
-                    group.education_plan_id
-                  )
-                : Promise.resolve(null),
-            ]);
-
-          const branchAddressId =
-            branch?.branch_address_id ??
-            branch?.address_id ??
-            null;
-
-          const branchAddress =
-            branchAddresses.find(
-              (address) =>
-                (
-                  branchAddressId !== null &&
-                  address.id === branchAddressId
-                ) ||
-                address.branch_id === group.branch_id
-            ) ?? null;
-
-          const branchName =
-            getBranchStreet(
-              branch,
-              branchAddress
-            );
-
-          const activeStudents =
-            studentResponse.items.filter(
-              (student) => student.is_active
-            );
-
-          const enrichedStudents =
-            await enrichGroupStudents(
-              activeStudents
-            );
-
-          return {
-            membershipId: membership.id,
-            group,
-            students: enrichedStudents,
-            direction,
-            educationPlan,
-            branchDisplayName:
-              getBranchDisplayName(
-                branch,
-                group.branch_id
-              ),
-            branchName,
-            fullAddress:
-              getFullAddress(
-                branch,
-                branchAddress
-              ),
-            auditoriumName:
-              getAuditoriumName(
-                branch,
-                group.branch_id
-              ),
-          };
-        })
-      );
-
-      loadedGroups.sort((firstGroup, secondGroup) =>
-        firstGroup.group.name.localeCompare(
-          secondGroup.group.name,
-          'ru'
-        )
-      );
-
-      setGroups(loadedGroups);
-    } catch (loadError) {
-      console.error(
-        'Не удалось загрузить группы преподавателя:',
-        loadError
-      );
-
-      setGroups([]);
-      setError(getErrorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+        setGroups([]);
+        setError(
+          getErrorMessage(loadError)
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [user?.id]);
 
   useEffect(() => {
     void loadGroups();
@@ -747,16 +853,21 @@ export default function TeacherGroups() {
     const handleKeyDown = (
       event: KeyboardEvent
     ) => {
-      if (event.key === 'Escape') {
-        if (openingMessageStudentId !== null) {
-          return;
-        }
-
-        setSelectedGroupInfo(null);
-        setSelectedProfileStudent(null);
-        setSelectedStudentProfile(null);
-        setStudentProfileError(null);
+      if (event.key !== 'Escape') {
+        return;
       }
+
+      if (
+        openingMessageStudentId !==
+        null
+      ) {
+        return;
+      }
+
+      setSelectedGroupInfo(null);
+      setSelectedProfileStudent(null);
+      setSelectedStudentProfile(null);
+      setStudentProfileError(null);
     };
 
     window.addEventListener(
@@ -776,110 +887,151 @@ export default function TeacherGroups() {
     selectedProfileStudent,
   ]);
 
-  const openStudentProfile = useCallback(
-    async (
-      student: GroupStudent,
-      groupName: string
-    ) => {
-      setSelectedProfileStudent({
-        student,
-        groupName,
-      });
-      setSelectedStudentProfile(null);
-      setStudentProfileError(null);
-      setIsStudentProfileLoading(true);
+  const openStudentProfile =
+    useCallback(
+      async (
+        student: GroupStudent,
+        groupName: string
+      ) => {
+        setSelectedProfileStudent({
+          student,
+          groupName,
+        });
 
-      try {
-        const profile = await getUserById(
+        setSelectedStudentProfile(
+          null
+        );
+
+        setStudentProfileError(
+          null
+        );
+
+        setIsStudentProfileLoading(
+          true
+        );
+
+        try {
+          const profile =
+            await getUserById(
+              student.user_id
+            );
+
+          setSelectedStudentProfile(
+            profile
+          );
+        } catch (profileError) {
+          setStudentProfileError(
+            profileError instanceof Error
+              ? profileError.message
+              : 'Не удалось загрузить профиль студента'
+          );
+        } finally {
+          setIsStudentProfileLoading(
+            false
+          );
+        }
+      },
+      []
+    );
+
+  const openStudentMessage =
+    useCallback(
+      async (
+        student: GroupStudent
+      ) => {
+        if (
+          !user?.id ||
+          openingMessageStudentId !==
+            null
+        ) {
+          return;
+        }
+
+        setOpeningMessageStudentId(
           student.user_id
         );
 
-        setSelectedStudentProfile(profile);
-      } catch (profileError) {
-        setStudentProfileError(
-          profileError instanceof Error
-            ? profileError.message
-            : 'Не удалось загрузить профиль студента'
-        );
-      } finally {
-        setIsStudentProfileLoading(false);
-      }
-    },
-    []
-  );
+        setActionError(null);
 
-  const openStudentMessage = useCallback(
-    async (student: GroupStudent) => {
+        const target:
+          MessageDirectoryPerson = {
+          userId: student.user_id,
+          displayName:
+            getStudentName(student),
+          avatarUrl:
+            student.avatar_url,
+          role: 'student',
+        };
+
+        try {
+          const chatsResponse =
+            await getChats(user.id);
+
+          const privateChat =
+            await openOrCreatePrivateChat(
+              chatsResponse.items,
+              user.id,
+              target
+            );
+
+          navigate(
+            `/dashboard/messages?chatId=${privateChat.id}`
+          );
+        } catch (messageError) {
+          setActionError(
+            messageError instanceof Error
+              ? messageError.message
+              : 'Не удалось открыть чат со студентом'
+          );
+        } finally {
+          setOpeningMessageStudentId(
+            null
+          );
+        }
+      },
+      [
+        navigate,
+        openingMessageStudentId,
+        user?.id,
+      ]
+    );
+
+  const closeStudentProfile =
+    () => {
       if (
-        !user?.id ||
-        openingMessageStudentId !== null
+        openingMessageStudentId !==
+        null
       ) {
         return;
       }
 
-      setOpeningMessageStudentId(
-        student.user_id
+      setSelectedProfileStudent(
+        null
       );
-      setActionError(null);
 
-      const target: MessageDirectoryPerson = {
-        userId: student.user_id,
-        displayName: getStudentName(student),
-        avatarUrl: student.avatar_url,
-        role: 'student',
-      };
+      setSelectedStudentProfile(
+        null
+      );
 
-      try {
-        const chatsResponse = await getChats(
-          user.id
-        );
+      setStudentProfileError(
+        null
+      );
+    };
 
-        const privateChat =
-          await openOrCreatePrivateChat(
-            chatsResponse.items,
-            user.id,
-            target
-          );
-
-        navigate(
-          `/dashboard/messages?chatId=${privateChat.id}`
-        );
-      } catch (messageError) {
-        setActionError(
-          messageError instanceof Error
-            ? messageError.message
-            : 'Не удалось открыть чат со студентом'
-        );
-      } finally {
-        setOpeningMessageStudentId(null);
-      }
-    },
-    [
-      navigate,
-      openingMessageStudentId,
-      user?.id,
-    ]
-  );
-
-  const closeStudentProfile = () => {
-    if (openingMessageStudentId !== null) {
-      return;
-    }
-
-    setSelectedProfileStudent(null);
-    setSelectedStudentProfile(null);
-    setStudentProfileError(null);
-  };
-
-  const totalStudentsCount = useMemo(
-    () =>
-      groups.reduce(
-        (total, groupItem) =>
-          total + groupItem.students.length,
-        0
-      ),
-    [groups]
-  );
+  const totalStudentsCount =
+    useMemo(
+      () =>
+        groups.reduce(
+          (
+            total,
+            groupItem
+          ) =>
+            total +
+            groupItem.students.length,
+          0
+        ),
+      [groups]
+    );
 
   if (loading) {
     return (
@@ -907,7 +1059,6 @@ export default function TeacherGroups() {
             Учебные группы, в которых вы назначены преподавателем.
           </p>
         </div>
-
       </div>
 
       {error && (
@@ -980,242 +1131,260 @@ export default function TeacherGroups() {
         </div>
       </div>
 
-      {!error && groups.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
-          <Users className="mx-auto h-12 w-12 text-gray-300" />
+      {!error &&
+        groups.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
+            <Users className="mx-auto h-12 w-12 text-gray-300" />
 
-          <h2 className="mt-4 text-lg font-semibold text-gray-900">
-            Группы не найдены
-          </h2>
+            <h2 className="mt-4 text-lg font-semibold text-gray-900">
+              Группы не найдены
+            </h2>
 
-          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-            Текущий преподаватель пока не назначен ни в одну
-            активную учебную группу.
-          </p>
-        </div>
-      )}
+            <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+              Текущий преподаватель пока не назначен ни в одну активную учебную группу.
+            </p>
+          </div>
+        )}
 
       {groups.length > 0 && (
         <div className="grid gap-5 xl:grid-cols-2">
-          {groups.map((groupItem) => {
-            const {
-              group,
-              students,
-              direction,
-              branchName,
-              auditoriumName,
-            } = groupItem;
+          {groups.map(
+            (groupItem) => {
+              const {
+                group,
+                students,
+                direction,
+                branchName,
+                roomName,
+              } = groupItem;
 
-            return (
-              <article
-                key={group.id}
-                className="flex h-[560px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
-              >
-                <div className="border-b border-gray-100 p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-gray-900">
-                          {group.name}
-                        </h2>
+              return (
+                <article
+                  key={group.id}
+                  className="flex h-[560px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
+                >
+                  <div className="border-b border-gray-100 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-lg font-bold text-gray-900">
+                            {group.name}
+                          </h2>
 
-                        {group.is_active !== false && (
-                          <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
-                            Активна
-                          </span>
-                        )}
+                          {group.is_active !==
+                            false && (
+                            <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                              Активна
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="mt-2 text-sm font-medium uppercase tracking-wide text-gray-500">
+                          Направление{' '}
+                          {direction?.name ??
+                            'не указано'}
+                        </p>
                       </div>
 
-                      <p className="mt-2 text-sm font-medium uppercase tracking-wide text-gray-500">
-                        Направление{' '}
-                        {direction?.name ??
-                          'не указано'}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedGroupInfo(
+                            groupItem
+                          )
+                        }
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-200 hover:bg-red-100"
+                      >
+                        <Info className="h-4 w-4" />
+
+                        <span className="hidden sm:inline">
+                          О группе
+                        </span>
+                      </button>
                     </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                        <UserRound className="h-4 w-4" />
+
+                        <span>
+                          Студентов:{' '}
+                          {students.length}
+                        </span>
+                      </div>
+
+                      <div className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                        <Building2 className="h-4 w-4" />
+
+                        <span>
+                          Филиал:{' '}
+                          {branchName},
+                          {' '}аудитория{' '}
+                          {roomName}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Студенты группы
+                    </p>
+
+                    {students.length ===
+                    0 ? (
+                      <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+                        <p className="text-sm text-gray-500">
+                          В группе пока нет активных студентов
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3 pr-2">
+                        {students.map(
+                          (student) => {
+                            const studentKey =
+                              `${group.id}:${student.user_id}`;
+
+                            const isExpanded =
+                              expandedStudentKey ===
+                              studentKey;
+
+                            const isOpeningMessage =
+                              openingMessageStudentId ===
+                              student.user_id;
+
+                            return (
+                              <div
+                                key={
+                                  student.membership_id
+                                }
+                                className={`overflow-hidden rounded-xl border transition ${
+                                  isExpanded
+                                    ? 'border-red-100 bg-red-50/40'
+                                    : 'border-transparent bg-gray-50 hover:border-gray-200'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedStudentKey(
+                                      isExpanded
+                                        ? null
+                                        : studentKey
+                                    );
+
+                                    setActionError(
+                                      null
+                                    );
+                                  }}
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                                  aria-expanded={
+                                    isExpanded
+                                  }
+                                >
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <UserAvatar
+                                      avatarUrl={
+                                        student.avatar_url
+                                      }
+                                      alt={getStudentName(
+                                        student
+                                      )}
+                                      className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
+                                    />
+
+                                    <p className="truncate text-sm font-medium text-gray-900">
+                                      {getStudentName(
+                                        student
+                                      )}
+                                    </p>
+                                  </div>
+
+                                  <span className="shrink-0 text-xs font-medium text-gray-400">
+                                    {isExpanded
+                                      ? 'Скрыть'
+                                      : 'Действия'}
+                                  </span>
+                                </button>
+
+                                {isExpanded && (
+                                  <div className="grid gap-2 border-t border-red-100 px-3 py-3 sm:grid-cols-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void openStudentProfile(
+                                          student,
+                                          group.name
+                                        )
+                                      }
+                                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      Открыть профиль
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void openStudentMessage(
+                                          student
+                                        )
+                                      }
+                                      disabled={
+                                        openingMessageStudentId !==
+                                        null
+                                      }
+                                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+                                    >
+                                      {isOpeningMessage ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <MessageSquare className="h-4 w-4" />
+                                      )}
+
+                                      Написать сообщение
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex flex-col gap-3 border-t border-gray-100 bg-gray-50/60 p-5 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          `/dashboard/attendance?groupId=${group.id}`
+                        )
+                      }
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                    >
+                      <Users className="h-4 w-4" />
+                      Посещаемость
+                    </button>
 
                     <button
                       type="button"
                       onClick={() =>
-                        setSelectedGroupInfo(
-                          groupItem
+                        navigate(
+                          `/dashboard/schedule?groupId=${group.id}`
                         )
                       }
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-200 hover:bg-red-100"
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
                     >
-                      <Info className="h-4 w-4" />
-                      <span className="hidden sm:inline">
-                        О группе
-                      </span>
+                      <CalendarDays className="h-4 w-4" />
+                      Расписание
                     </button>
                   </div>
-
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <div className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                      <UserRound className="h-4 w-4" />
-
-                      <span>
-                        Студентов: {students.length}
-                      </span>
-                    </div>
-
-                    <div className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                      <Building2 className="h-4 w-4" />
-
-                      <span>
-                        Филиал: {branchName},
-                        {' '}аудитория {auditoriumName}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    Студенты группы
-                  </p>
-
-                  {students.length === 0 ? (
-                    <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
-                      <p className="text-sm text-gray-500">
-                        В группе пока нет активных студентов
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3 pr-2">
-                      {students.map((student) => {
-                        const studentKey =
-                          `${group.id}:${student.user_id}`;
-
-                        const isExpanded =
-                          expandedStudentKey ===
-                          studentKey;
-
-                        const isOpeningMessage =
-                          openingMessageStudentId ===
-                          student.user_id;
-
-                        return (
-                          <div
-                            key={student.membership_id}
-                            className={`overflow-hidden rounded-xl border transition ${
-                              isExpanded
-                                ? 'border-red-100 bg-red-50/40'
-                                : 'border-transparent bg-gray-50 hover:border-gray-200'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedStudentKey(
-                                  isExpanded
-                                    ? null
-                                    : studentKey
-                                );
-                                setActionError(null);
-                              }}
-                              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
-                              aria-expanded={isExpanded}
-                            >
-                              <div className="flex min-w-0 items-center gap-3">
-                                <UserAvatar
-                                  avatarUrl={
-                                    student.avatar_url
-                                  }
-                                  alt={getStudentName(
-                                    student
-                                  )}
-                                  className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
-                                />
-
-                                <p className="truncate text-sm font-medium text-gray-900">
-                                  {getStudentName(
-                                    student
-                                  )}
-                                </p>
-                              </div>
-
-                              <span className="shrink-0 text-xs font-medium text-gray-400">
-                                {isExpanded
-                                  ? 'Скрыть'
-                                  : 'Действия'}
-                              </span>
-                            </button>
-
-                            {isExpanded && (
-                              <div className="grid gap-2 border-t border-red-100 px-3 py-3 sm:grid-cols-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void openStudentProfile(
-                                      student,
-                                      group.name
-                                    )
-                                  }
-                                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  Открыть профиль
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void openStudentMessage(
-                                      student
-                                    )
-                                  }
-                                  disabled={
-                                    openingMessageStudentId !==
-                                    null
-                                  }
-                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
-                                >
-                                  {isOpeningMessage ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <MessageSquare className="h-4 w-4" />
-                                  )}
-                                  Написать сообщение
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-auto flex flex-col gap-3 border-t border-gray-100 bg-gray-50/60 p-5 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        `/dashboard/attendance?groupId=${group.id}`
-                      )
-                    }
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
-                  >
-                    <Users className="h-4 w-4" />
-                    Посещаемость
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        `/dashboard/schedule?groupId=${group.id}`
-                      )
-                    }
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                    Расписание
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            }
+          )}
         </div>
       )}
 
@@ -1241,19 +1410,23 @@ export default function TeacherGroups() {
             selectedGroupInfo.direction
               ?.description ?? null
           }
-          educationPlanName={getEducationPlanName(
-            selectedGroupInfo.educationPlan,
-            selectedGroupInfo.group
-              .education_plan_id
-          )}
+          educationPlanName={
+            getEducationPlanName(
+              selectedGroupInfo.educationPlan,
+              selectedGroupInfo.group
+                .education_plan_id
+            )
+          }
           educationPlanDescription={
             selectedGroupInfo.educationPlan
               ?.description ?? null
           }
-          educationPlanDuration={formatEducationPlanDuration(
-            selectedGroupInfo.educationPlan
-              ?.duration_months
-          )}
+          educationPlanDuration={
+            formatEducationPlanDuration(
+              selectedGroupInfo.educationPlan
+                ?.duration_months
+            )
+          }
           lessonsPerWeek={
             selectedGroupInfo.educationPlan
               ?.lessons_per_week
@@ -1265,16 +1438,18 @@ export default function TeacherGroups() {
               : 'Не указано'
           }
           startDate={formatGroupDate(
-            selectedGroupInfo.group.start_date
+            selectedGroupInfo.group
+              .start_date
           )}
           endDate={formatGroupDate(
-            selectedGroupInfo.group.end_date
+            selectedGroupInfo.group
+              .end_date
           )}
           branchName={
-            selectedGroupInfo.branchDisplayName
+            selectedGroupInfo.branchName
           }
-          address={
-            selectedGroupInfo.fullAddress
+          roomName={
+            selectedGroupInfo.roomName
           }
           onClose={() =>
             setSelectedGroupInfo(null)
@@ -1293,7 +1468,9 @@ export default function TeacherGroups() {
             selectedProfileStudent.student
               .user_id
           }
-          error={studentProfileError}
+          error={
+            studentProfileError
+          }
           studentName={getStudentName(
             selectedProfileStudent.student
           )}
@@ -1302,10 +1479,15 @@ export default function TeacherGroups() {
               .avatar_url
           }
           groupName={
-            selectedProfileStudent.groupName
+            selectedProfileStudent
+              .groupName
           }
-          profile={selectedStudentProfile}
-          onClose={closeStudentProfile}
+          profile={
+            selectedStudentProfile
+          }
+          onClose={
+            closeStudentProfile
+          }
           onMessage={() =>
             void openStudentMessage(
               selectedProfileStudent.student

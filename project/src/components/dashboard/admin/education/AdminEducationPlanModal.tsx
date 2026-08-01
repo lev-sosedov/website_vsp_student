@@ -50,6 +50,22 @@ interface AdminEducationPlanModalProps {
 const inputClassName =
   'mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-gray-50';
 
+const allowedDurationMonths = [
+  24,
+  36,
+  60,
+] as const;
+
+function normalizeDurationMonths(
+  value: number | null | undefined
+): string {
+  return allowedDurationMonths.includes(
+    value as (typeof allowedDurationMonths)[number]
+  )
+    ? String(value)
+    : '24';
+}
+
 export default function AdminEducationPlanModal({
   isOpen,
   item,
@@ -100,8 +116,8 @@ export default function AdminEducationPlanModal({
     );
     setName(item?.plan.name ?? '');
     setDurationMonths(
-      String(
-        item?.plan.duration_months ?? 24
+      normalizeDurationMonths(
+        item?.plan.duration_months
       )
     );
     setLessonsPerWeek(
@@ -342,11 +358,7 @@ export default function AdminEducationPlanModal({
               <span className="text-sm font-medium text-gray-700">
                 Продолжительность, месяцев
               </span>
-              <input
-                type="number"
-                min={1}
-                max={120}
-                step={1}
+              <select
                 value={durationMonths}
                 onChange={(event) =>
                   setDurationMonths(
@@ -356,7 +368,18 @@ export default function AdminEducationPlanModal({
                 className={inputClassName}
                 required
                 disabled={isBusy}
-              />
+              >
+                {allowedDurationMonths.map(
+                  (months) => (
+                    <option
+                      key={months}
+                      value={months}
+                    >
+                      {months} месяцев
+                    </option>
+                  )
+                )}
+              </select>
             </label>
 
             <label>
@@ -590,7 +613,11 @@ export default function AdminEducationPlanModal({
                 isBusy ||
                 !directionId ||
                 !name.trim() ||
-                Number(durationMonths) < 1 ||
+                !allowedDurationMonths.includes(
+                  Number(
+                    durationMonths
+                  ) as (typeof allowedDurationMonths)[number]
+                ) ||
                 Number(lessonsPerWeek) < 1
               }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"

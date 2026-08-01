@@ -3,7 +3,9 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+
 import {
+  AlertCircle,
   CalendarClock,
   Loader2,
   X,
@@ -22,7 +24,9 @@ interface TeacherRescheduleModalProps {
   isSaving: boolean;
   error: string | null;
   onClose: () => void;
-  onSubmit: (payload: LessonReschedule) => Promise<void>;
+  onSubmit: (
+    payload: LessonReschedule
+  ) => Promise<void>;
 }
 
 export default function TeacherRescheduleModal({
@@ -34,41 +38,101 @@ export default function TeacherRescheduleModal({
   onClose,
   onSubmit,
 }: TeacherRescheduleModalProps) {
-  const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [roomId, setRoomId] = useState('');
-  const [reason, setReason] = useState('');
+  const [
+    date,
+    setDate,
+  ] = useState('');
+
+  const [
+    startTime,
+    setStartTime,
+  ] = useState('');
+
+  const [
+    endTime,
+    setEndTime,
+  ] = useState('');
+
+  const [
+    roomId,
+    setRoomId,
+  ] = useState('');
+
+  const [
+    reason,
+    setReason,
+  ] = useState('');
 
   useEffect(() => {
     if (!lesson) {
       return;
     }
 
-    setDate(lesson.lesson_date);
-    setStartTime(lesson.start_time.slice(0, 5));
-    setEndTime(lesson.end_time.slice(0, 5));
-    setRoomId(String(lesson.room_id));
+    const currentRoomIsAvailable =
+      rooms.some(
+        (room) =>
+          room.id ===
+            lesson.room_id
+      );
+
+    setDate(
+      lesson.lesson_date
+    );
+
+    setStartTime(
+      lesson.start_time.slice(
+        0,
+        5
+      )
+    );
+
+    setEndTime(
+      lesson.end_time.slice(
+        0,
+        5
+      )
+    );
+
+    setRoomId(
+      String(
+        currentRoomIsAvailable
+          ? lesson.room_id
+          : rooms[0]?.id ??
+              ''
+      )
+    );
+
     setReason('');
-  }, [lesson]);
+  }, [
+    lesson,
+    rooms,
+  ]);
 
   if (!lesson) {
     return null;
   }
 
   const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
 
     await onSubmit({
-      lesson_date: date,
-      start_time: `${startTime}:00`,
-      end_time: `${endTime}:00`,
-      room_id: Number(roomId),
-      teacher_id: teacherId,
-      changed_by: teacherId,
-      reason: reason.trim(),
+      lesson_date:
+        date,
+      start_time:
+        `${startTime}:00`,
+      end_time:
+        `${endTime}:00`,
+      room_id:
+        Number(roomId),
+      teacher_id:
+        teacherId,
+      changed_by:
+        teacherId,
+      reason:
+        reason.trim(),
     });
   };
 
@@ -80,23 +144,41 @@ export default function TeacherRescheduleModal({
       aria-labelledby="reschedule-title"
     >
       <form
-        onSubmit={(event) => void handleSubmit(event)}
+        onSubmit={(
+          event
+        ) =>
+          void handleSubmit(
+            event
+          )
+        }
         className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
           <div className="flex items-center gap-3">
             <CalendarClock className="h-5 w-5 text-blue-600" />
-            <h2
-              id="reschedule-title"
-              className="text-lg font-bold text-gray-900"
-            >
-              Перенести занятие
-            </h2>
+
+            <div>
+              <h2
+                id="reschedule-title"
+                className="text-lg font-bold text-gray-900"
+              >
+                Перенести занятие
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Можно выбрать только кабинет филиала этой группы.
+              </p>
+            </div>
           </div>
+
           <button
             type="button"
-            onClick={onClose}
-            disabled={isSaving}
+            onClick={
+              onClose
+            }
+            disabled={
+              isSaving
+            }
             className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
             aria-label="Закрыть"
           >
@@ -109,72 +191,156 @@ export default function TeacherRescheduleModal({
             <span className="text-sm font-medium text-gray-700">
               Новая дата
             </span>
+
             <input
               required
               type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
+              value={
+                date
+              }
+              onChange={(
+                event
+              ) =>
+                setDate(
+                  event.target.value
+                )
+              }
               className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             />
           </label>
+
           <label className="space-y-2">
             <span className="text-sm font-medium text-gray-700">
               Начало
             </span>
+
             <input
               required
               type="time"
-              value={startTime}
-              onChange={(event) =>
-                setStartTime(event.target.value)
+              value={
+                startTime
+              }
+              onChange={(
+                event
+              ) =>
+                setStartTime(
+                  event.target.value
+                )
               }
               className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400"
             />
           </label>
+
           <label className="space-y-2">
             <span className="text-sm font-medium text-gray-700">
               Окончание
             </span>
+
             <input
               required
               type="time"
-              value={endTime}
-              onChange={(event) =>
-                setEndTime(event.target.value)
+              value={
+                endTime
+              }
+              onChange={(
+                event
+              ) =>
+                setEndTime(
+                  event.target.value
+                )
               }
               className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400"
             />
           </label>
+
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-medium text-gray-700">
               Кабинет
             </span>
+
             <select
               required
-              value={roomId}
-              onChange={(event) => setRoomId(event.target.value)}
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400"
+              value={
+                roomId
+              }
+              onChange={(
+                event
+              ) =>
+                setRoomId(
+                  event.target.value
+                )
+              }
+              disabled={
+                rooms.length ===
+                0
+              }
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
             >
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
+              <option
+                value=""
+                disabled
+              >
+                {rooms.length ===
+                0
+                  ? 'В филиале нет доступных кабинетов'
+                  : 'Выберите кабинет'}
+              </option>
+
+              {rooms.map(
+                (room) => (
+                  <option
+                    key={
+                      room.id
+                    }
+                    value={
+                      room.id
+                    }
+                  >
+                    {room.name}
+                  </option>
+                )
+              )}
             </select>
           </label>
+
+          {rooms.length ===
+            0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:col-span-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+              <p>
+                Для филиала группы не найдено активных кабинетов. Сначала добавьте или активируйте кабинет.
+              </p>
+            </div>
+          )}
+
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-medium text-gray-700">
               Причина переноса
             </span>
+
             <textarea
               required
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              maxLength={1000}
+              value={
+                reason
+              }
+              onChange={(
+                event
+              ) =>
+                setReason(
+                  event.target.value
+                )
+              }
+              rows={
+                3
+              }
+              maxLength={
+                1000
+              }
               className="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-blue-400"
             />
           </label>
+
           {error && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 sm:col-span-2">
               {error}
@@ -185,24 +351,34 @@ export default function TeacherRescheduleModal({
         <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
           <button
             type="button"
-            onClick={onClose}
-            disabled={isSaving}
+            onClick={
+              onClose
+            }
+            disabled={
+              isSaving
+            }
             className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700"
           >
             Отмена
           </button>
+
           <button
             type="submit"
             disabled={
               isSaving ||
+              !roomId ||
+              rooms.length ===
+                0 ||
               !reason.trim() ||
-              endTime <= startTime
+              endTime <=
+                startTime
             }
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300"
           >
             {isSaving && (
               <Loader2 className="h-4 w-4 animate-spin" />
             )}
+
             Перенести
           </button>
         </div>

@@ -2,8 +2,8 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  DoorOpen,
   GraduationCap,
-  MapPin,
   X,
 } from 'lucide-react';
 
@@ -21,7 +21,7 @@ interface TeacherGroupInfoModalProps {
   startDate: string;
   endDate: string;
   branchName: string;
-  address: string;
+  roomName: string;
   onClose: () => void;
 }
 
@@ -71,7 +71,7 @@ export default function TeacherGroupInfoModal({
   startDate,
   endDate,
   branchName,
-  address,
+  roomName,
   onClose,
 }: TeacherGroupInfoModalProps) {
   if (!isOpen) {
@@ -85,7 +85,10 @@ export default function TeacherGroupInfoModal({
       aria-modal="true"
       aria-labelledby="teacher-group-info-title"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
           onClose();
         }
       }}
@@ -108,7 +111,9 @@ export default function TeacherGroupInfoModal({
                     : 'bg-gray-100 text-gray-600'
                 }`}
               >
-                {isActive ? 'Активна' : 'Неактивна'}
+                {isActive
+                  ? 'Активна'
+                  : 'Неактивна'}
               </span>
             </div>
 
@@ -180,9 +185,9 @@ export default function TeacherGroupInfoModal({
             />
 
             <InfoItem
-              icon={MapPin}
-              label="Адрес"
-              value={address}
+              icon={DoorOpen}
+              label="Кабинет"
+              value={roomName}
             />
           </div>
 

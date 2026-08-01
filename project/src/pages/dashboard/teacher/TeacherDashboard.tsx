@@ -22,11 +22,6 @@ import {
   useNavigate,
 } from 'react-router-dom';
 
-import UserAvatar from '../../../components/common/UserAvatar';
-import StatCard from '../../../components/dashboard/StatCard';
-import DashboardNotifications from '../../../components/dashboard/student/StudentDashboardNotifications';
-import { useAuth } from '../../../context/AuthContext';
-
 import {
   getActiveUserGroups,
   getDirection,
@@ -38,8 +33,8 @@ import {
 } from '../../../api/academicApi';
 
 import {
-  getTodayLessons,
-} from '../../../api/scheduleApi';
+  getChats,
+} from '../../../api/chatApi';
 
 import {
   getGroupHomeworks,
@@ -53,6 +48,31 @@ import {
   NOTIFICATIONS_UPDATED_EVENT,
   type UserNotification,
 } from '../../../api/notificationApi';
+
+import {
+  getStudentParents,
+  type ParentStudentWithParent,
+} from '../../../api/parentStudentApi';
+
+import {
+  getTodayLessons,
+} from '../../../api/scheduleApi';
+
+import {
+  getUserById,
+  type UserProfile,
+} from '../../../api/userApi';
+
+import UserAvatar from '../../../components/common/UserAvatar';
+import StatCard from '../../../components/dashboard/StatCard';
+import DashboardNotifications from '../../../components/dashboard/student/StudentDashboardNotifications';
+import TeacherStudentProfileModal from '../../../components/dashboard/teacher/TeacherStudentProfileModal';
+import { useAuth } from '../../../context/AuthContext';
+
+import {
+  openOrCreatePrivateChat,
+  type MessageDirectoryPerson,
+} from '../../../services/messageDirectoryService';
 
 interface TeacherDashboardGroup {
   membershipId: number;
@@ -80,24 +100,46 @@ function getErrorMessage(error: unknown): string {
   return 'Произошла неизвестная ошибка';
 }
 
-function getStudentName(student: GroupStudent): string {
-  const fullName = [
-    student.last_name,
-    student.first_name,
-  ]
+function joinName(
+  values: Array<string | null | undefined>,
+  fallback: string
+): string {
+  const fullName = values
+    .map((value) => value?.trim())
     .filter(Boolean)
     .join(' ')
     .trim();
 
-  if (fullName) {
-    return fullName;
-  }
+  return fullName || fallback;
+}
 
-  if (student.user_name?.trim()) {
-    return student.user_name.trim();
-  }
+function getStudentName(
+  student: GroupStudent,
+  profile?: UserProfile | null
+): string {
+  return joinName(
+    [
+      profile?.first_name ?? student.first_name,
+      profile?.user_name ?? student.user_name,
+      profile?.last_name ?? student.last_name,
+    ],
+    `Студент №${student.user_id}`
+  );
+}
 
-  return `Студент №${student.user_id}`;
+function getParentName(
+  parentLink: ParentStudentWithParent
+): string {
+  const parent = parentLink.parent;
+
+  return joinName(
+    [
+      parent.first_name,
+      parent.user_name,
+      parent.last_name,
+    ],
+    `Родитель №${parent.id}`
+  );
 }
 
 export default function TeacherDashboard() {
@@ -106,16 +148,11 @@ export default function TeacherDashboard() {
 
   const teacherId = Number(user?.id);
 
-  const [
-    groups,
-    setGroups,
-  ] = useState<TeacherDashboardGroup[]>([]);
+  const [groups, setGroups] =
+    useState<TeacherDashboardGroup[]>([]);
 
-  const [
-    todayLessonsCount,
-    setTodayLessonsCount,
-  ] = useState(0);
-
+  const [todayLessonsCount, setTodayLessonsCount] =
+    useState(0);
 
   const [
     submissionsToReviewCount,
@@ -137,15 +174,50 @@ export default function TeacherDashboard() {
     setNotificationsLoading,
   ] = useState(true);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [actionError, setActionError] =
+    useState<string | null>(null);
 
   const [
-    error,
-    setError,
+    selectedStudentItem,
+    setSelectedStudentItem,
+  ] = useState<UniqueStudentItem | null>(null);
+
+  const [
+    selectedStudentProfile,
+    setSelectedStudentProfile,
+  ] = useState<UserProfile | null>(null);
+
+  const [
+    isStudentProfileLoading,
+    setIsStudentProfileLoading,
+  ] = useState(false);
+
+  const [
+    studentProfileError,
+    setStudentProfileError,
   ] = useState<string | null>(null);
+
+  const [
+    selectedStudentParents,
+    setSelectedStudentParents,
+  ] = useState<ParentStudentWithParent[]>([]);
+
+  const [
+    areParentsLoading,
+    setAreParentsLoading,
+  ] = useState(false);
+
+  const [parentError, setParentError] =
+    useState<string | null>(null);
+
+  const [
+    openingMessageUserId,
+    setOpeningMessageUserId,
+  ] = useState<number | null>(null);
 
   const loadDashboard = useCallback(async () => {
     if (
@@ -240,7 +312,9 @@ export default function TeacherDashboard() {
           return {
             membershipId: membership.id,
             group,
-            students: studentsResponse.items,
+            students: studentsResponse.items.filter(
+              (student) => student.is_active
+            ),
             homeworks,
             submissions,
             direction,
@@ -258,9 +332,7 @@ export default function TeacherDashboard() {
       const todayLessonsByGroup =
         await Promise.all(
           loadedGroups.map((groupItem) =>
-            getTodayLessons(
-              groupItem.group.id
-            )
+            getTodayLessons(groupItem.group.id)
           )
         );
 
@@ -271,23 +343,26 @@ export default function TeacherDashboard() {
           0
         );
 
-      const submissionsToReview = new Set<number>();
+      const submissionsToReview =
+        new Set<number>();
 
       loadedGroups.forEach((groupItem) => {
-        groupItem.submissions.forEach((submission) => {
-          if (
-            submission.status === 'submitted' ||
-            submission.status === 'in_review'
-          ) {
-            submissionsToReview.add(submission.id);
+        groupItem.submissions.forEach(
+          (submission) => {
+            if (
+              submission.status === 'submitted' ||
+              submission.status === 'in_review'
+            ) {
+              submissionsToReview.add(
+                submission.id
+              );
+            }
           }
-        });
+        );
       });
 
       setGroups(loadedGroups);
-      setTodayLessonsCount(
-        todayLessonsTotal
-      );
+      setTodayLessonsCount(todayLessonsTotal);
       setSubmissionsToReviewCount(
         submissionsToReview.size
       );
@@ -386,6 +461,42 @@ export default function TeacherDashboard() {
     };
   }, [loadNotifications]);
 
+  useEffect(() => {
+    if (!selectedStudentItem) {
+      return;
+    }
+
+    const handleKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      if (
+        event.key === 'Escape' &&
+        openingMessageUserId === null
+      ) {
+        setSelectedStudentItem(null);
+        setSelectedStudentProfile(null);
+        setSelectedStudentParents([]);
+        setStudentProfileError(null);
+        setParentError(null);
+      }
+    };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [
+    openingMessageUserId,
+    selectedStudentItem,
+  ]);
+
   const handleNotificationRead = (
     notificationId: number
   ) => {
@@ -421,25 +532,29 @@ export default function TeacherDashboard() {
       const acceptedHomeworkIdsByStudent =
         new Map<number, Set<number>>();
 
-      groupItem.submissions.forEach((submission) => {
-        if (submission.status !== 'accepted') {
-          return;
+      groupItem.submissions.forEach(
+        (submission) => {
+          if (
+            submission.status !== 'accepted'
+          ) {
+            return;
+          }
+
+          const studentHomeworkIds =
+            acceptedHomeworkIdsByStudent.get(
+              submission.student_id
+            ) ?? new Set<number>();
+
+          studentHomeworkIds.add(
+            submission.homework_id
+          );
+
+          acceptedHomeworkIdsByStudent.set(
+            submission.student_id,
+            studentHomeworkIds
+          );
         }
-
-        const studentHomeworkIds =
-          acceptedHomeworkIdsByStudent.get(
-            submission.student_id
-          ) ?? new Set<number>();
-
-        studentHomeworkIds.add(
-          submission.homework_id
-        );
-
-        acceptedHomeworkIdsByStudent.set(
-          submission.student_id,
-          studentHomeworkIds
-        );
-      });
+      );
 
       const groupHomeworkIds = new Set(
         groupItem.homeworks.map(
@@ -476,8 +591,10 @@ export default function TeacherDashboard() {
             );
           }
 
-          existing.assignedCount += assignedCount;
-          existing.acceptedCount += acceptedCount;
+          existing.assignedCount +=
+            assignedCount;
+          existing.acceptedCount +=
+            acceptedCount;
           existing.outstandingCount =
             existing.assignedCount -
             existing.acceptedCount;
@@ -527,6 +644,174 @@ export default function TeacherDashboard() {
     [uniqueStudents]
   );
 
+  const openStudentProfile = useCallback(
+    async (studentItem: UniqueStudentItem) => {
+      const studentId =
+        studentItem.student.user_id;
+
+      setSelectedStudentItem(studentItem);
+      setSelectedStudentProfile(null);
+      setSelectedStudentParents([]);
+      setStudentProfileError(null);
+      setParentError(null);
+      setActionError(null);
+      setIsStudentProfileLoading(true);
+      setAreParentsLoading(true);
+
+      const [profileResult, parentsResult] =
+        await Promise.allSettled([
+          getUserById(studentId),
+          getStudentParents(studentId),
+        ]);
+
+      if (profileResult.status === 'fulfilled') {
+        setSelectedStudentProfile(
+          profileResult.value
+        );
+      } else {
+        setStudentProfileError(
+          getErrorMessage(profileResult.reason)
+        );
+      }
+
+      if (parentsResult.status === 'fulfilled') {
+        setSelectedStudentParents(
+          parentsResult.value.filter(
+            (parentLink) =>
+              parentLink.is_active &&
+              parentLink.parent.is_active
+          )
+        );
+      } else {
+        setParentError(
+          getErrorMessage(parentsResult.reason)
+        );
+      }
+
+      setIsStudentProfileLoading(false);
+      setAreParentsLoading(false);
+    },
+    []
+  );
+
+  const openPrivateMessage = useCallback(
+    async (target: MessageDirectoryPerson) => {
+      if (
+        !user?.id ||
+        openingMessageUserId !== null
+      ) {
+        return;
+      }
+
+      setOpeningMessageUserId(target.userId);
+      setActionError(null);
+
+      try {
+        const chatsResponse = await getChats(
+          user.id
+        );
+
+        /*
+         * openOrCreatePrivateChat сначала ищет уже
+         * существующий личный чат. Новый чат создаётся
+         * только тогда, когда подходящего чата нет.
+         */
+        const privateChat =
+          await openOrCreatePrivateChat(
+            chatsResponse.items,
+            user.id,
+            target
+          );
+
+        navigate(
+          `/dashboard/messages?chatId=${privateChat.id}`
+        );
+      } catch (messageError) {
+        setActionError(
+          messageError instanceof Error
+            ? messageError.message
+            : 'Не удалось открыть личный чат'
+        );
+      } finally {
+        setOpeningMessageUserId(null);
+      }
+    },
+    [
+      navigate,
+      openingMessageUserId,
+      user?.id,
+    ]
+  );
+
+  const openStudentMessage = useCallback(
+    async (studentItem: UniqueStudentItem) => {
+      const studentId =
+        studentItem.student.user_id;
+
+      let profile = selectedStudentProfile;
+
+      if (
+        !profile ||
+        profile.id !== studentId
+      ) {
+        try {
+          profile = await getUserById(studentId);
+        } catch {
+          profile = null;
+        }
+      }
+
+      await openPrivateMessage({
+        userId: studentId,
+        displayName: getStudentName(
+          studentItem.student,
+          profile
+        ),
+        avatarUrl:
+          profile?.avatar_url ??
+          studentItem.student.avatar_url,
+        role: 'student',
+      });
+    },
+    [
+      openPrivateMessage,
+      selectedStudentProfile,
+    ]
+  );
+
+  const openParentMessage = useCallback(
+    async (
+      parentLink: ParentStudentWithParent
+    ) => {
+      const parent = parentLink.parent;
+
+      await openPrivateMessage({
+        userId: parent.id,
+        displayName: getParentName(parentLink),
+        avatarUrl: parent.avatar_url,
+        /*
+         * В текущем messageDirectoryService роли parent
+         * пока нет. Для личного чата это влияет только
+         * на техническое описание, а поиск существующего
+         * чата выполняется по участникам.
+         */
+        role: 'student',
+      });
+    },
+    [openPrivateMessage]
+  );
+
+  const closeStudentProfile = () => {
+    if (openingMessageUserId !== null) {
+      return;
+    }
+
+    setSelectedStudentItem(null);
+    setSelectedStudentProfile(null);
+    setSelectedStudentParents([]);
+    setStudentProfileError(null);
+    setParentError(null);
+  };
 
   if (loading) {
     return (
@@ -570,6 +855,22 @@ export default function TeacherDashboard() {
         </div>
       )}
 
+      {actionError && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+          <div>
+            <p className="font-medium">
+              Не удалось открыть чат
+            </p>
+
+            <p className="mt-1 text-sm">
+              {actionError}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Мои группы"
@@ -587,7 +888,9 @@ export default function TeacherDashboard() {
 
         <StatCard
           label="Заданий на проверке"
-          value={String(submissionsToReviewCount)}
+          value={String(
+            submissionsToReviewCount
+          )}
           icon={ClipboardList}
           color="amber"
         />
@@ -687,15 +990,9 @@ export default function TeacherDashboard() {
         </div>
 
         <DashboardNotifications
-          notifications={
-            dashboardNotifications
-          }
-          unreadCount={
-            unreadNotificationsCount
-          }
-          isLoading={
-            notificationsLoading
-          }
+          notifications={dashboardNotifications}
+          unreadCount={unreadNotificationsCount}
+          isLoading={notificationsLoading}
           onNotificationRead={
             handleNotificationRead
           }
@@ -710,7 +1007,9 @@ export default function TeacherDashboard() {
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Студенты, которым требуется сдать домашнюю работу
+              Нажмите на имя студента, чтобы открыть
+              профиль и связаться со студентом или
+              родителем
             </p>
           </div>
 
@@ -761,89 +1060,148 @@ export default function TeacherDashboard() {
               <tbody className="divide-y divide-gray-50">
                 {studentsWithHomeworkDebt
                   .slice(0, 8)
-                  .map((studentItem) => (
-                    <tr
-                      key={studentItem.student.user_id}
-                      className="transition-colors hover:bg-gray-50"
-                    >
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <UserAvatar
-                            avatarUrl={
-                              studentItem.student
-                                .avatar_url
-                            }
-                            alt={getStudentName(
-                              studentItem.student
-                            )}
-                            className="h-8 w-8 shrink-0 rounded-full object-cover"
-                          />
+                  .map((studentItem) => {
+                    const studentName =
+                      getStudentName(
+                        studentItem.student
+                      );
 
-                          <span className="font-medium text-gray-900">
-                            {getStudentName(
-                              studentItem.student
-                            )}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="py-3 text-gray-500">
-                        {studentItem.groupNames.join(', ')}
-                      </td>
-
-                      <td className="py-3">
-                        <div
-                          className="flex items-center gap-1.5 font-semibold"
-                          title="Принято / осталось сдать"
-                        >
-                          <span className="text-green-600">
-                            {studentItem.acceptedCount}
-                          </span>
-                          <span className="text-gray-300">
-                            /
-                          </span>
-                          <span className="text-red-600">
-                            {studentItem.outstandingCount}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="py-3 text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
+                    return (
+                      <tr
+                        key={
+                          studentItem.student.user_id
+                        }
+                        className="transition-colors hover:bg-gray-50"
+                      >
+                        <td className="py-3">
                           <button
                             type="button"
                             onClick={() =>
-                              navigate(
-                                `/dashboard/students/${studentItem.student.user_id}`
+                              void openStudentProfile(
+                                studentItem
                               )
                             }
-                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                            className="flex items-center gap-3 rounded-lg text-left outline-none transition hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-200"
+                            title="Открыть профиль студента"
                           >
-                            Открыть профиль
-                          </button>
+                            <UserAvatar
+                              avatarUrl={
+                                studentItem.student
+                                  .avatar_url
+                              }
+                              alt={studentName}
+                              className="h-8 w-8 shrink-0 rounded-full object-cover"
+                            />
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              navigate(
-                                `/dashboard/attendance?groupId=${studentItem.groupIds[0]}&studentId=${studentItem.student.user_id}`
-                              )
-                            }
-                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-                          >
-                            Открыть журнал
+                            <span className="font-medium text-gray-900 underline-offset-4 transition hover:underline">
+                              {studentName}
+                            </span>
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+
+                        <td className="py-3 text-gray-500">
+                          {studentItem.groupNames.join(', ')}
+                        </td>
+
+                        <td className="py-3">
+                          <div
+                            className="flex items-center gap-1.5 font-semibold"
+                            title="Принято / осталось сдать"
+                          >
+                            <span className="text-green-600">
+                              {studentItem.acceptedCount}
+                            </span>
+                            <span className="text-gray-300">
+                              /
+                            </span>
+                            <span className="text-red-600">
+                              {studentItem.outstandingCount}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="py-3 text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openStudentProfile(
+                                  studentItem
+                                )
+                              }
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+                            >
+                              Открыть профиль
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(
+                                  `/dashboard/attendance?groupId=${studentItem.groupIds[0]}&studentId=${studentItem.student.user_id}`
+                                )
+                              }
+                              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                            >
+                              Открыть журнал
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-
+      {selectedStudentItem && (
+        <TeacherStudentProfileModal
+          isOpen
+          isLoading={isStudentProfileLoading}
+          isOpeningMessage={
+            openingMessageUserId !== null
+          }
+          error={studentProfileError}
+          studentName={getStudentName(
+            selectedStudentItem.student,
+            selectedStudentProfile
+          )}
+          studentAvatarUrl={
+            selectedStudentProfile?.avatar_url ??
+            selectedStudentItem.student.avatar_url
+          }
+          groupName={
+            selectedStudentItem.groupNames.join(', ')
+          }
+          profile={selectedStudentProfile}
+          parents={selectedStudentParents}
+          areParentsLoading={areParentsLoading}
+          parentError={parentError}
+          assignedCount={
+            selectedStudentItem.assignedCount
+          }
+          acceptedCount={
+            selectedStudentItem.acceptedCount
+          }
+          outstandingCount={
+            selectedStudentItem.outstandingCount
+          }
+          openingMessageUserId={
+            openingMessageUserId
+          }
+          onClose={closeStudentProfile}
+          onMessage={() =>
+            void openStudentMessage(
+              selectedStudentItem
+            )
+          }
+          onMessageParent={(parentLink) =>
+            void openParentMessage(parentLink)
+          }
+        />
+      )}
     </div>
   );
 }

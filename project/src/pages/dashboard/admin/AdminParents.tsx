@@ -7,6 +7,8 @@ import {
   Link2Off,
   Loader2,
   Lock,
+  MessageCircle,
+  Phone,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -26,6 +28,10 @@ import {
   useMemo,
   useState,
 } from 'react';
+
+import {
+  useNavigate,
+} from 'react-router-dom';
 
 import {
   activateParentStudentLink,
@@ -238,6 +244,8 @@ function StatusBadges({
 }
 
 export default function AdminParents() {
+  const navigate = useNavigate();
+
   const [parents, setParents] =
     useState<AdminParentItem[]>([]);
   const [students, setStudents] =
@@ -1261,7 +1269,34 @@ export default function AdminParents() {
                       </div>
                     </div>
 
-                    <div className="flex justify-start xl:justify-end">
+                    <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(
+                            `/dashboard/messages?contactUserId=${item.profile.id}&contactRole=parent`
+                          )
+                        }
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-600 hover:text-white"
+                        title={`Написать ${getParentName(
+                          item.profile
+                        )}`}
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Написать
+                      </button>
+
+                      {item.profile.phone_number && (
+                        <a
+                          href={`tel:${item.profile.phone_number}`}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-green-200 hover:bg-green-50 hover:text-green-700"
+                          title={`Позвонить ${item.profile.phone_number}`}
+                        >
+                          <Phone className="h-4 w-4" />
+                          Позвонить
+                        </a>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -1777,6 +1812,33 @@ export default function AdminParents() {
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        `/dashboard/messages?contactUserId=${selectedParent.profile.id}&contactRole=parent`
+                      )
+                    }
+                    disabled={Boolean(
+                      activeAction
+                    )}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Написать родителю
+                  </button>
+
+                  {selectedParent.profile
+                    .phone_number && (
+                    <a
+                      href={`tel:${selectedParent.profile.phone_number}`}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 transition hover:bg-green-100"
+                    >
+                      <Phone className="h-4 w-4" />
+                      Позвонить родителю
+                    </a>
+                  )}
+
                   <button
                     type="button"
                     onClick={() =>

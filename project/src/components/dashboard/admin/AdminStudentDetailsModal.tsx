@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
   UserCheck,
+  Users,
   X,
 } from 'lucide-react';
 
@@ -20,6 +21,12 @@ import {
   useEffect,
   useState,
 } from 'react';
+
+import {
+  getStudentParents,
+  type ParentRelationship,
+  type ParentStudentWithParent,
+} from '../../../api/parentStudentApi';
 
 import UserAvatar from '../../common/UserAvatar';
 
@@ -43,6 +50,10 @@ interface AdminStudentDetailsModalProps {
   onToggleActive: () => void;
   onDelete: () => void;
   onMessage?: () => void;
+  showParentContacts?: boolean;
+  onMessageParent?: (
+    parentLink: ParentStudentWithParent
+  ) => void;
 }
 
 function VerificationBadge({
@@ -72,6 +83,35 @@ function VerificationBadge({
   );
 }
 
+const PARENT_RELATIONSHIP_LABELS: Record<
+  ParentRelationship,
+  string
+> = {
+  mother: 'Мама',
+  father: 'Папа',
+  guardian: 'Законный представитель',
+  other: 'Родственник',
+};
+
+function getParentName(
+  parentLink: ParentStudentWithParent
+): string {
+  const parent = parentLink.parent;
+
+  return (
+    [
+      parent.first_name,
+      parent.user_name,
+      parent.last_name,
+    ]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim() ||
+    `Родитель №${parent.id}`
+  );
+}
+
 export default function AdminStudentDetailsModal({
   student,
   roleLabel = 'Студент',
@@ -88,15 +128,84 @@ export default function AdminStudentDetailsModal({
   onToggleActive,
   onDelete,
   onMessage,
+  showParentContacts = false,
+  onMessageParent,
 }: AdminStudentDetailsModalProps) {
   const [
     isDeleteConfirmationVisible,
     setIsDeleteConfirmationVisible,
   ] = useState(false);
 
+  const [parents, setParents] =
+    useState<ParentStudentWithParent[]>([]);
+  const [
+    areParentsLoading,
+    setAreParentsLoading,
+  ] = useState(false);
+  const [
+    parentsError,
+    setParentsError,
+  ] = useState<string | null>(null);
+
+  const studentId =
+    student?.profile.id ?? null;
+
   useEffect(() => {
     setIsDeleteConfirmationVisible(false);
-  }, [student?.profile.id]);
+  }, [studentId]);
+
+  useEffect(() => {
+    if (
+      !showParentContacts ||
+      studentId === null
+    ) {
+      setParents([]);
+      setParentsError(null);
+      setAreParentsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadParents = async () => {
+      setAreParentsLoading(true);
+      setParentsError(null);
+
+      try {
+        const result =
+          await getStudentParents(
+            studentId,
+            true
+          );
+
+        if (!cancelled) {
+          setParents(result);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setParents([]);
+          setParentsError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Не удалось загрузить родителей'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setAreParentsLoading(false);
+        }
+      }
+    };
+
+    void loadParents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showParentContacts,
+    studentId,
+  ]);
 
   if (!student) {
     return null;
@@ -248,6 +357,123 @@ export default function AdminStudentDetailsModal({
               </div>
             )}
           </div>
+
+          {showParentContacts && (
+            <div className="mt-6">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-red-500" />
+                <h3 className="text-sm font-bold text-gray-900">
+                  Родители и представители
+                </h3>
+              </div>
+
+              {areParentsLoading ? (
+                <div className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                  <Loader2 className="h-5 w-5 animate-spin text-red-600" />
+                  Загружаем родителей…
+                </div>
+              ) : parentsError ? (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {parentsError}
+                </p>
+              ) : parents.length === 0 ? (
+                <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+                  <Users className="mx-auto h-7 w-7 text-gray-300" />
+                  <p className="mt-2 text-sm text-gray-500">
+                    К студенту пока не привязан родитель
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {parents.map((parentLink) => {
+                    const parent =
+                      parentLink.parent;
+                    const parentName =
+                      getParentName(parentLink);
+
+                    return (
+                      <div
+                        key={parentLink.id}
+                        className="rounded-xl border border-gray-100 p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <UserAvatar
+                            avatarUrl={
+                              parent.avatar_url
+                            }
+                            alt={parentName}
+                            className="h-11 w-11 shrink-0 rounded-full object-cover"
+                          />
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-gray-900">
+                                {parentName}
+                              </p>
+
+                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                {
+                                  PARENT_RELATIONSHIP_LABELS[
+                                    parentLink.relationship
+                                  ]
+                                }
+                              </span>
+                            </div>
+
+                            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                              <div className="flex min-w-0 items-center gap-2 text-gray-600">
+                                <Phone className="h-4 w-4 shrink-0 text-gray-400" />
+                                <span className="truncate">
+                                  {parent.phone_number ||
+                                    'Телефон не указан'}
+                                </span>
+                              </div>
+
+                              <div className="flex min-w-0 items-center gap-2 text-gray-600">
+                                <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                                <span className="truncate">
+                                  {parent.email ||
+                                    'Email не указан'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                              {parent.phone_number && (
+                                <a
+                                  href={`tel:${parent.phone_number}`}
+                                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 transition hover:bg-green-100"
+                                >
+                                  <Phone className="h-4 w-4" />
+                                  Позвонить родителю
+                                </a>
+                              )}
+
+                              {onMessageParent && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    onMessageParent(
+                                      parentLink
+                                    )
+                                  }
+                                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                  Написать родителю
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">

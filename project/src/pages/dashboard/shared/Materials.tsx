@@ -81,6 +81,30 @@ const MONTH_NAMES = [
   'декабря',
 ];
 
+function getLocalDateKey(
+  date = new Date()
+): string {
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, '0');
+  const day = String(
+    date.getDate()
+  ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function isMaterialAvailableForLesson(
+  lesson: LessonSchedule,
+  todayDateKey: string
+): boolean {
+  return (
+    lesson.status !== 'cancelled' &&
+    lesson.lesson_date <= todayDateKey
+  );
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -317,11 +341,30 @@ export default function Materials() {
         const groupLessons =
           groupLessonLists.flat();
 
+        /*
+         * Расписание студент видит заранее, но материалы
+         * становятся доступны только в день занятия.
+         *
+         * Сравниваем строки формата YYYY-MM-DD в локальной
+         * дате браузера, поэтому материалы завтрашнего дня
+         * и более поздних занятий в список не попадут.
+         */
+        const todayDateKey =
+          getLocalDateKey();
+
+        const availableGroupLessons =
+          groupLessons.filter((lesson) =>
+            isMaterialAvailableForLesson(
+              lesson,
+              todayDateKey
+            )
+          );
+
         const teacherProfiles =
           await getUsersByIds(
             [
               ...new Set(
-                groupLessons.map(
+                availableGroupLessons.map(
                   (lesson) =>
                     lesson.teacher_id
                 )
@@ -330,10 +373,12 @@ export default function Materials() {
           );
 
         const lessonsById = new Map(
-          groupLessons.map((lesson) => [
-            lesson.id,
-            lesson,
-          ])
+          availableGroupLessons.map(
+            (lesson) => [
+              lesson.id,
+              lesson,
+            ]
+          )
         );
 
         const groupNamesById = new Map(
@@ -413,6 +458,21 @@ export default function Materials() {
 
         preparedMaterials.sort(
           (firstMaterial, secondMaterial) => {
+            /*
+             * При выборе «Все группы» материалы идут
+             * по названию группы, а внутри группы —
+             * от новых занятий к старым.
+             */
+            const groupComparison =
+              firstMaterial.groupName.localeCompare(
+                secondMaterial.groupName,
+                'ru'
+              );
+
+            if (groupComparison !== 0) {
+              return groupComparison;
+            }
+
             const dateComparison =
               secondMaterial.lesson.lesson_date.localeCompare(
                 firstMaterial.lesson.lesson_date
@@ -577,7 +637,7 @@ export default function Materials() {
           </h1>
 
           <p className="mt-1 text-gray-500">
-            Лекции, презентации, файлы и полезные ссылки
+            Материалы текущих и прошедших занятий
           </p>
         </div>
       </div>

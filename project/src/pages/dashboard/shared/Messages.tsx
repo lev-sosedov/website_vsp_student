@@ -1021,15 +1021,19 @@ export default function Messages() {
           );
         }
 
+        const normalizedContactRole =
+          contactProfile.role?.toLowerCase();
+
         const contactRole =
-          contactProfile.role
-            ?.toLowerCase() === 'admin'
+          normalizedContactRole === 'admin'
             ? 'admin'
-            : contactProfile.role
-                  ?.toLowerCase() ===
+            : normalizedContactRole ===
                 'teacher'
               ? 'teacher'
-              : 'student';
+              : normalizedContactRole ===
+                  'parent'
+                ? 'parent'
+                : 'student';
 
         const contactName = [
           contactProfile.first_name,
@@ -1039,7 +1043,14 @@ export default function Messages() {
           .map((value) => value?.trim())
           .filter(Boolean)
           .join(' ')
-          .trim() || 'Преподаватель';
+          .trim() ||
+          (contactRole === 'parent'
+            ? 'Родитель'
+            : contactRole === 'teacher'
+              ? 'Преподаватель'
+              : contactRole === 'admin'
+                ? 'Администратор'
+                : 'Студент');
 
         requestedContactChat =
           await openOrCreatePrivateChat(

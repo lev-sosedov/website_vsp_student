@@ -36,6 +36,8 @@ import {
   type LessonSchedule,
 } from '../../../api/scheduleApi';
 
+import StudentLessonDetailsModal from '../../../components/dashboard/student/StudentLessonDetailsModal';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 interface Teacher {
@@ -350,11 +352,13 @@ function getErrorMessage(error: unknown): string {
 interface ScheduleProps {
   managementPanel?: ReactNode;
   refreshKey?: number;
+  onLessonClick?: (lesson: LessonSchedule) => void;
 }
 
 export default function Schedule({
   managementPanel,
   refreshKey = 0,
+  onLessonClick,
 }: ScheduleProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -403,6 +407,11 @@ export default function Schedule({
   const [lessons, setLessons] = useState<
     DisplayLesson[]
   >([]);
+
+  const [
+    selectedStudentLesson,
+    setSelectedStudentLesson,
+  ] = useState<DisplayLesson | null>(null);
 
   const [isLoading, setIsLoading] =
     useState<boolean>(true);
@@ -1066,6 +1075,22 @@ export default function Schedule({
     (studentGroups.length > 1 &&
       selectedGroupId === null);
 
+  const canOpenLesson =
+    Boolean(onLessonClick) || !isTeacher;
+
+  const openLessonDetails = (
+    lesson: DisplayLesson
+  ) => {
+    if (onLessonClick) {
+      onLessonClick(lesson);
+      return;
+    }
+
+    if (!isTeacher) {
+      setSelectedStudentLesson(lesson);
+    }
+  };
+
   const monthStartOffset =
     (selectedPeriodStart.getDay() + 6) % 7;
 
@@ -1335,9 +1360,11 @@ export default function Schedule({
                             'cancelled';
 
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={lesson.id}
-                              className={`rounded-lg border px-2 py-1.5 ${
+                              onClick={() => openLessonDetails(lesson)}
+                              className={`w-full rounded-lg border px-2 py-1.5 text-left ${
                                 isCancelled
                                   ? 'border-gray-200 bg-gray-50 opacity-60'
                                   : 'border-red-100 bg-red-50'
@@ -1369,7 +1396,7 @@ export default function Schedule({
                                   {lesson.groupName}
                                 </p>
                               )}
-                            </div>
+                            </button>
                           );
                         })}
 
@@ -1494,10 +1521,30 @@ export default function Schedule({
                       return (
                         <article
                           key={lesson.id}
+                          role={canOpenLesson ? 'button' : undefined}
+                          tabIndex={canOpenLesson ? 0 : undefined}
+                          onClick={() => {
+                            if (canOpenLesson) {
+                              openLessonDetails(lesson);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              canOpenLesson &&
+                              (event.key === 'Enter' || event.key === ' ')
+                            ) {
+                              event.preventDefault();
+                              openLessonDetails(lesson);
+                            }
+                          }}
                           className={`rounded-xl border p-4 transition ${
                             isCancelled
                               ? 'border-gray-200 bg-gray-50 opacity-70'
                               : 'border-gray-100 bg-white hover:border-red-100 hover:shadow-sm'
+                          } ${
+                            canOpenLesson
+                              ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-200'
+                              : ''
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1630,6 +1677,18 @@ export default function Schedule({
           ))}
         </div>
         )
+      )}
+
+      {selectedStudentLesson && !isTeacher && (
+        <StudentLessonDetailsModal
+          lesson={selectedStudentLesson}
+          groupName={selectedStudentLesson.groupName}
+          teacherName={selectedStudentLesson.teacherName}
+          roomName={selectedStudentLesson.roomName}
+          onClose={() =>
+            setSelectedStudentLesson(null)
+          }
+        />
       )}
     </div>
   );

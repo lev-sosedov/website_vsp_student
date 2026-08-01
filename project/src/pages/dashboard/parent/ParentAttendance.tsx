@@ -51,6 +51,7 @@ const STATUS_LABELS: Record<
   string
 > = {
   present: 'Присутствовал',
+  remote: 'Присутствовал дистанционно',
   absent: 'Отсутствовал',
   late: 'Опоздал',
   excused: 'Уважительная причина',
@@ -62,6 +63,7 @@ const STATUS_SHORT_LABELS: Record<
   string
 > = {
   present: 'Присутствовал',
+  remote: 'Дистант',
   absent: 'Пропуск',
   late: 'Опоздание',
   excused: 'Уважительная',
@@ -74,6 +76,8 @@ const STATUS_CLASSES: Record<
 > = {
   present:
     'border-green-200 bg-green-50 text-green-700',
+  remote:
+    'border-violet-200 bg-violet-50 text-violet-700',
   absent:
     'border-red-200 bg-red-50 text-red-700',
   late:
@@ -89,6 +93,8 @@ const CALENDAR_CLASSES: Record<
 > = {
   present:
     'border-green-100 bg-green-50 text-green-700',
+  remote:
+    'border-violet-100 bg-violet-50 text-violet-700',
   absent:
     'border-red-100 bg-red-50 text-red-700',
   late:
@@ -103,6 +109,7 @@ const STATUS_PRIORITY: Record<
   number
 > = {
   present: 1,
+  remote: 1,
   excused: 2,
   late: 3,
   absent: 4,
@@ -273,7 +280,9 @@ function getStatistics(
     rows.filter(
       ({ attendance }) =>
         attendance.status ===
-        'present'
+          'present' ||
+        attendance.status ===
+          'remote'
     ).length;
 
   const absent =

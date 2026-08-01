@@ -452,6 +452,20 @@ export async function unpublishLessonContent(
   );
 }
 
+export async function deleteLessonContent(
+  contentId: number,
+  deletedBy: number
+): Promise<void> {
+  validatePositiveId(contentId, 'ID материала');
+
+  await request<DeleteResponse>(
+    `/api/v1/lesson-contents/${contentId}?deleted_by=${deletedBy}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
 /* =====================================================
    Файлы материалов
 ===================================================== */
