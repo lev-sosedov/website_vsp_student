@@ -64,7 +64,10 @@ import type {
 import { useAuth } from '../../../context/AuthContext';
 
 import {
+  ensureParentSchoolChats,
   loadMessageGroupDirectories,
+  normalizeParentChatList,
+  normalizePrivateChatList,
   openOrCreatePrivateChat,
   type MessageDirectoryPerson,
   type MessageGroupDirectory,
@@ -963,7 +966,35 @@ export default function Messages() {
         currentUserId
       );
 
-      let availableChats = response.items
+      let allChats = response.items;
+
+      const normalizedRole =
+        user?.role?.toLowerCase();
+
+      if (normalizedRole === 'parent') {
+        allChats =
+          await ensureParentSchoolChats(
+            currentUserId,
+            allChats
+          );
+      }
+
+      /*
+       * Один родитель может быть связан с ребёнком сразу
+       * в нескольких группах одного преподавателя. В базе
+       * при этом могли появиться несколько личных чатов с
+       * тем же родителем. Для преподавателя оставляем один
+       * наиболее актуальный чат на каждого собеседника.
+       */
+      if (normalizedRole === 'teacher') {
+        allChats =
+          await normalizePrivateChatList(
+            currentUserId,
+            allChats
+          );
+      }
+
+      let availableChats = allChats
         .filter(
           (chat) =>
             chat.is_active &&
@@ -1213,7 +1244,32 @@ export default function Messages() {
           currentUserId
         );
 
-        const availableChats = response.items
+        let refreshedChats = response.items;
+
+        const normalizedRole =
+          user?.role?.toLowerCase();
+
+        /*
+         * При тихом обновлении родительские чаты также
+         * очищаются от дублей. Для преподавателя polling
+         * ниже отключён, но нормализация сохранена на случай
+         * ручного вызова этой функции в будущем.
+         */
+        if (normalizedRole === 'parent') {
+          refreshedChats =
+            await normalizeParentChatList(
+              currentUserId,
+              refreshedChats
+            );
+        } else if (normalizedRole === 'teacher') {
+          refreshedChats =
+            await normalizePrivateChatList(
+              currentUserId,
+              refreshedChats
+            );
+        }
+
+        const availableChats = refreshedChats
           .filter(
             (chat) =>
               chat.is_active &&
@@ -1289,7 +1345,10 @@ export default function Messages() {
           refreshError
         );
       }
-    }, [currentUserId]);
+    }, [
+      currentUserId,
+      user?.role,
+    ]);
 
   const loadMessages = useCallback(
     async (chatId: number) => {
@@ -1655,6 +1714,18 @@ export default function Messages() {
   }, [chats, currentUserId]);
 
   useEffect(() => {
+    /*
+     * Для преподавателя не запускаем пятисекундный polling.
+     * Новые сообщения продолжают приходить через WebSocket,
+     * а список чатов загружается при открытии страницы.
+     */
+    if (
+      user?.role?.toLowerCase() ===
+      'teacher'
+    ) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       void refreshChatsSilently();
     }, 5000);
@@ -1662,7 +1733,7 @@ export default function Messages() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [refreshChatsSilently]);
+  }, [refreshChatsSilently, user?.role]);
 
   useEffect(() => {
     setChatMessages([]);

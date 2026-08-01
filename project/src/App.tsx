@@ -6,8 +6,9 @@ import DashboardRouter from './components/DashboardRouter';
 import Home from './pages/public/Home';
 import About from './pages/public/About';
 import Programs from './pages/public/Programs';
-import Teachers from './pages/public/Teachers';
+import Questions from './pages/public/Questions';
 import News from './pages/public/News';
+import NewsDetail from './pages/public/NewsDetail';
 import Reviews from './pages/public/Reviews';
 import Contacts from './pages/public/Contacts';
 import Privacy from './pages/public/Privacy';
@@ -35,8 +36,9 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/programs" element={<Programs />} />
-            <Route path="/teachers" element={<Teachers />} />
+            <Route path="/questions" element={<Questions />} />
             <Route path="/news" element={<News />} />
+            <Route path="/news/:slug" element={<NewsDetail />} />
             <Route path="/reviews" element={<Reviews />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/privacy" element={<Privacy />} />

@@ -39,6 +39,7 @@ import {
 } from '../../../api/newsApi';
 import AdminNewsEditorModal, {
   type AdminNewsFormValues,
+  type AdminNewsSubmitMode,
 } from '../../../components/dashboard/admin/news/AdminNewsEditorModal';
 import AdminNewsFeedCard from '../../../components/dashboard/admin/news/AdminNewsFeedCard';
 import { useAuth } from '../../../context/AuthContext';
@@ -264,7 +265,8 @@ export default function AdminNews() {
   };
 
   const savePost = async (
-    values: AdminNewsFormValues
+    values: AdminNewsFormValues,
+    submitMode: AdminNewsSubmitMode
   ) => {
     if (!user?.id) {
       setModalError(
@@ -421,11 +423,24 @@ export default function AdminNews() {
         }
       }
 
+      if (
+        submitMode === 'publish' &&
+        savedPost.status !== 'published'
+      ) {
+        savedPost = await publishNewsPost(
+          savedPost.id,
+          user.id,
+          values.sendNotification
+        );
+      }
+
       await loadNews();
       setSuccessMessage(
-        selectedItem
-          ? 'Новость обновлена'
-          : 'Черновик новости создан'
+        submitMode === 'publish'
+          ? 'Новость опубликована'
+          : selectedItem
+            ? 'Новость обновлена'
+            : 'Черновик новости создан'
       );
       closeModal();
     } catch (saveError) {
@@ -607,128 +622,126 @@ export default function AdminNews() {
         })}
       </div>
 
-      <div className="card p-4 sm:p-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(3,minmax(160px,0.7fr))_auto]">
-          <label className="relative">
-            <span className="sr-only">
-              Поиск новостей
-            </span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              value={searchValue}
+      <section className="card overflow-hidden">
+        <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-bold text-gray-900">
+              Лента новостей
+            </h2>
+            <p className="text-xs text-gray-500">
+              Показано: {filteredItems.length}
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(280px,1.5fr)_repeat(3,minmax(155px,0.72fr))_auto]">
+            <label className="relative">
+              <span className="sr-only">
+                Поиск новостей
+              </span>
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={searchValue}
+                onChange={(event) =>
+                  setSearchValue(
+                    event.target.value
+                  )
+                }
+                placeholder="Заголовок, текст или категория"
+                className={`${selectClassName} pl-10`}
+              />
+            </label>
+
+            <select
+              value={statusFilter}
               onChange={(event) =>
-                setSearchValue(
+                setStatusFilter(
+                  event.target.value as
+                    | 'all'
+                    | PostStatus
+                )
+              }
+              aria-label="Статус новости"
+              className={selectClassName}
+            >
+              <option value="all">
+                Все статусы
+              </option>
+              <option value="published">
+                Опубликовано
+              </option>
+              <option value="draft">
+                Черновики
+              </option>
+              <option value="archived">
+                Архив
+              </option>
+            </select>
+
+            <select
+              value={typeFilter}
+              onChange={(event) =>
+                setTypeFilter(
+                  event.target.value as
+                    | 'all'
+                    | PostType
+                )
+              }
+              aria-label="Тип новости"
+              className={selectClassName}
+            >
+              <option value="all">
+                Все типы
+              </option>
+              {POST_TYPE_OPTIONS.map((type) => (
+                <option
+                  key={type.value}
+                  value={type.value}
+                >
+                  {type.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(
                   event.target.value
                 )
               }
-              placeholder="Заголовок, текст или категория"
-              className={`${selectClassName} pl-10`}
-            />
-          </label>
-
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(
-                event.target.value as
-                  | 'all'
-                  | PostStatus
-              )
-            }
-            aria-label="Статус новости"
-            className={selectClassName}
-          >
-            <option value="all">
-              Все статусы
-            </option>
-            <option value="published">
-              Опубликовано
-            </option>
-            <option value="draft">
-              Черновики
-            </option>
-            <option value="archived">
-              Архив
-            </option>
-          </select>
-
-          <select
-            value={typeFilter}
-            onChange={(event) =>
-              setTypeFilter(
-                event.target.value as
-                  | 'all'
-                  | PostType
-              )
-            }
-            aria-label="Тип новости"
-            className={selectClassName}
-          >
-            <option value="all">
-              Все типы
-            </option>
-            {POST_TYPE_OPTIONS.map((type) => (
-              <option
-                key={type.value}
-                value={type.value}
-              >
-                {type.label}
+              aria-label="Категория новости"
+              className={selectClassName}
+            >
+              <option value="all">
+                Все категории
               </option>
-            ))}
-          </select>
+              {categories.map((category) => (
+                <option
+                  key={category}
+                  value={category}
+                >
+                  {category}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={categoryFilter}
-            onChange={(event) =>
-              setCategoryFilter(
-                event.target.value
-              )
-            }
-            aria-label="Категория новости"
-            className={selectClassName}
-          >
-            <option value="all">
-              Все категории
-            </option>
-            {categories.map((category) => (
-              <option
-                key={category}
-                value={category}
-              >
-                {category}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={() =>
-              setPinnedOnly(
-                (current) => !current
-              )
-            }
-            aria-pressed={pinnedOnly}
-            className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-              pinnedOnly
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Pin className="h-4 w-4" />
-            Закреплённые
-          </button>
-        </div>
-      </div>
-
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
-          <div>
-            <h2 className="font-bold text-gray-900">
-              Лента новостей
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Показано: {filteredItems.length}
-            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setPinnedOnly(
+                  (current) => !current
+                )
+              }
+              aria-pressed={pinnedOnly}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                pinnedOnly
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Pin className="h-4 w-4" />
+              Закреплённые
+            </button>
           </div>
         </div>
 
@@ -750,8 +763,8 @@ export default function AdminNews() {
             </p>
           </div>
         ) : (
-          <div className="max-h-[calc(100vh-23rem)] min-h-[32rem] overflow-y-auto bg-gray-50/60 p-4 sm:p-6">
-            <div className="mx-auto max-w-5xl space-y-5">
+          <div className="min-h-[64rem] bg-gray-50/60 p-4 sm:p-6 lg:p-8">
+            <div className="w-full space-y-7">
               {filteredItems.map((item) => (
                 <AdminNewsFeedCard
                   key={item.post.id}

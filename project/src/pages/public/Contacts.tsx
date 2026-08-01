@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock3,
+  Flag,
   Loader2,
   Mail,
   MapPin,
@@ -27,6 +28,8 @@ const branches = [
     address: 'г. Краснодар, ул. Базовская, 254',
     phone: '+7 (988) 199-75-59',
     phoneHref: '+79881997559',
+    markerLeft: 27.59,
+    markerTop: 39.45,
   },
   {
     id: 2,
@@ -35,6 +38,8 @@ const branches = [
       'г. Краснодар, ул. имени Валерия Гассия, 2',
     phone: '+7 (958) 609-27-74',
     phoneHref: '+79586092774',
+    markerLeft: 72.56,
+    markerTop: 87.8,
   },
   {
     id: 3,
@@ -42,6 +47,8 @@ const branches = [
     address: 'г. Краснодар, ул. Монтажников, 2',
     phone: '+7 (988) 199-75-59',
     phoneHref: '+79881997559',
+    markerLeft: 12.33,
+    markerTop: 21.31,
   },
   {
     id: 4,
@@ -49,6 +56,8 @@ const branches = [
     address: 'г. Краснодар, ул. Зиповская, 31',
     phone: '+7 (958) 609-18-74',
     phoneHref: '+79586091874',
+    markerLeft: 37.22,
+    markerTop: 17.15,
   },
   {
     id: 5,
@@ -57,8 +66,14 @@ const branches = [
       'г. Краснодар, ул. Сормовская, 163/1',
     phone: '+7 (988) 199-75-59',
     phoneHref: '+79881997559',
+    markerLeft: 83.83,
+    markerTop: 47.3,
   },
 ];
+
+function getMapLink(address: string): string {
+  return `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
+}
 
 const socialLinks = [
   {
@@ -185,15 +200,15 @@ export default function Contacts() {
             <ContactCard
               icon={Phone}
               label="Телефон"
-              value="+7 (861) 000-00-00"
+              value="8(988) 199-75-59"
               href="tel:+78610000000"
             />
 
             <ContactCard
               icon={Mail}
               label="Электронная почта"
-              value="lev_sosedov@mail.ru"
-              href="mailto:lev_sosedov@mail.ru"
+              value="nochu-cit@mail.ru"
+              href="mailto:nochu-cit@mail.ru"
             />
 
             <ContactCard
@@ -566,14 +581,56 @@ export default function Contacts() {
             </h2>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+          <div className="mx-auto w-full max-w-4xl">
+            <div className="relative aspect-[6/5] overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-sm">
             <iframe
               title="Филиалы Высшей школы программирования"
-              src="https://yandex.ru/map-widget/v1/?ll=38.976481%2C45.035470&z=11"
-              className="h-[420px] w-full border-0"
+              src="https://www.openstreetmap.org/export/embed.html?bbox=38.94%2C44.98%2C39.12%2C45.08&layer=mapnik"
+              className="absolute inset-0 h-full w-full border-0"
               loading="lazy"
               allowFullScreen
             />
+
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute left-4 top-4 rounded-xl border border-white/70 bg-white/95 px-3 py-2 text-xs font-semibold text-gray-700 shadow-md backdrop-blur-sm">
+                На карте отмечено: {branches.length}
+              </div>
+
+              {branches.map((branch, index) => (
+                <a
+                  key={branch.id}
+                  href={getMapLink(branch.address)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${branch.name}: ${branch.address}`}
+                  aria-label={`Открыть на карте: ${branch.name}, ${branch.address}`}
+                  className="group pointer-events-auto absolute -translate-x-1/2 -translate-y-full"
+                  style={{
+                    left: `${branch.markerLeft}%`,
+                    top: `${branch.markerTop}%`,
+                  }}
+                >
+                  <span className="relative flex h-11 w-11 items-center justify-center rounded-full border-4 border-white bg-red-600 text-white shadow-lg transition-transform group-hover:scale-110">
+                    <Flag className="h-5 w-5" />
+
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-900 px-1 text-[10px] font-bold text-white">
+                      {index + 1}
+                    </span>
+                  </span>
+
+                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-56 -translate-x-1/2 rounded-xl bg-gray-950/95 px-3 py-2 text-center text-xs leading-5 text-white shadow-xl group-hover:block">
+                    <strong className="block font-semibold">
+                      {branch.name}
+                    </strong>
+
+                    <span className="text-white/75">
+                      {branch.address}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
           </div>
         </div>
       </section>

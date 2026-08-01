@@ -130,9 +130,11 @@ export default function NewsSection() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {news.map(
               (post) => (
-                <article
+                <Link
                   key={post.id}
-                  className="card group overflow-hidden"
+                  to={`/news/${encodeURIComponent(post.slug)}`}
+                  className="card group block overflow-hidden focus:outline-none focus:ring-4 focus:ring-red-100"
+                  aria-label={`Открыть новость: ${post.title}`}
                 >
                   <div className="aspect-[16/10] overflow-hidden bg-gray-100">
                     <NewsCover
@@ -164,8 +166,13 @@ export default function NewsSection() {
                         post
                       )}
                     </p>
+
+                    <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 transition group-hover:text-red-700">
+                      Читать полностью
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </span>
                   </div>
-                </article>
+                </Link>
               )
             )}
           </div>

@@ -5,6 +5,7 @@ import {
   Camera,
   Check,
   GraduationCap,
+  Home,
   Loader2,
   Lock,
   Mail,
@@ -26,6 +27,8 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
+
+import { Link } from 'react-router-dom';
 
 import {
   changePassword,
@@ -642,13 +645,23 @@ export default function Profile() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Профиль
-        </h1>
-        <p className="mt-1 text-gray-500">
-          Управление личными данными и настройками аккаунта
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Профиль
+          </h1>
+          <p className="mt-1 text-gray-500">
+            Управление личными данными и настройками аккаунта
+          </p>
+        </div>
+
+        <Link
+          to="/"
+          className="btn-secondary inline-flex items-center justify-center gap-2 self-start text-sm"
+        >
+          <Home className="h-4 w-4" />
+          На главную
+        </Link>
       </div>
 
       <div className="card p-6">

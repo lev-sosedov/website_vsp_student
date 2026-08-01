@@ -4,7 +4,7 @@ import { GraduationCap, Phone, Mail, MapPin } from 'lucide-react';
 const footerNav = [
   { to: '/about', label: 'О школе' },
   { to: '/programs', label: 'Программы' },
-  { to: '/teachers', label: 'Преподаватели' },
+  { to: '/questions', label: 'Вопросы' },
   { to: '/news', label: 'Новости' },
   { to: '/reviews', label: 'Отзывы' },
   { to: '/contacts', label: 'Контакты' },

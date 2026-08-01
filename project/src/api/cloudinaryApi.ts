@@ -125,6 +125,44 @@ function toLegacyResult(
   };
 }
 
+/**
+ * Формирует изображение-превью из первого кадра видео Cloudinary.
+ * Для обычных внешних ссылок возвращает null — там превью нужно указать вручную.
+ */
+export function getCloudinaryVideoPosterUrl(
+  videoUrl: string | null | undefined
+): string | null {
+  const normalizedUrl = videoUrl?.trim();
+
+  if (
+    !normalizedUrl ||
+    !normalizedUrl.includes('/video/upload/')
+  ) {
+    return null;
+  }
+
+  const [urlWithoutQuery, queryString] =
+    normalizedUrl.split('?', 2);
+
+  const transformedUrl = urlWithoutQuery.replace(
+    '/video/upload/',
+    '/video/upload/so_0,f_jpg,q_auto/'
+  );
+
+  const posterUrl = /\.[^./]+$/.test(
+    transformedUrl
+  )
+    ? transformedUrl.replace(
+        /\.[^./]+$/,
+        '.jpg'
+      )
+    : `${transformedUrl}.jpg`;
+
+  return queryString
+    ? `${posterUrl}?${queryString}`
+    : posterUrl;
+}
+
 export function isCloudinaryConfigured(): boolean {
   return Boolean(
     CLOUDINARY_CLOUD_NAME &&

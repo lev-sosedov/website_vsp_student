@@ -3,6 +3,7 @@ import {
   Image,
   Loader2,
   Plus,
+  Send,
   Star,
   Trash2,
   Video,
@@ -18,6 +19,7 @@ import {
 } from 'react';
 
 import {
+  getCloudinaryVideoPosterUrl,
   uploadNewsMediaToCloudinary,
 } from '../../../../api/cloudinaryApi';
 import type {
@@ -43,6 +45,10 @@ export interface AdminNewsMediaDraft {
   altText: string | null;
 }
 
+export type AdminNewsSubmitMode =
+  | 'draft'
+  | 'publish';
+
 export interface AdminNewsFormValues {
   postType: PostType;
   title: string;
@@ -65,7 +71,8 @@ interface AdminNewsEditorModalProps {
   error: string | null;
   onClose: () => void;
   onSubmit: (
-    values: AdminNewsFormValues
+    values: AdminNewsFormValues,
+    submitMode: AdminNewsSubmitMode
   ) => Promise<void>;
 }
 
@@ -158,10 +165,16 @@ function mediaPreview(
   }
 
   if (media.mediaType === 'video') {
+    const posterUrl =
+      media.previewUrl ??
+      getCloudinaryVideoPosterUrl(
+        media.fileUrl
+      );
+
     return (
       <video
         src={media.fileUrl}
-        poster={media.previewUrl ?? undefined}
+        poster={posterUrl ?? undefined}
         controls
         preload="metadata"
         className="h-28 w-full rounded-xl bg-gray-950 object-cover"
@@ -323,7 +336,12 @@ export default function AdminNewsEditorModal({
         mediaType,
         fileUrl: normalizedUrl,
         previewUrl:
-          previewUrl.trim() || null,
+          previewUrl.trim() ||
+          (mediaType === 'video'
+            ? getCloudinaryVideoPosterUrl(
+                normalizedUrl
+              )
+            : null),
         fileName: null,
         mimeType: null,
         fileSize: null,
@@ -377,7 +395,12 @@ export default function AdminNewsEditorModal({
           key,
           mediaType: detectedType,
           fileUrl: result.secure_url,
-          previewUrl: null,
+          previewUrl:
+            detectedType === 'video'
+              ? getCloudinaryVideoPosterUrl(
+                  result.secure_url
+                )
+              : null,
           fileName:
             result.original_filename ??
             file.name,
@@ -443,25 +466,54 @@ export default function AdminNewsEditorModal({
     }
   };
 
+  const submitForm = (
+    submitMode: AdminNewsSubmitMode
+  ) => {
+    if (
+      isSaving ||
+      isUploading ||
+      !title.trim()
+    ) {
+      return;
+    }
+
+    const hasPublicationContent =
+      Boolean(content.trim()) ||
+      Boolean(item?.post.cover_media_url) ||
+      visibleExistingMedia.length > 0 ||
+      newMedia.length > 0;
+
+    if (
+      submitMode === 'publish' &&
+      !hasPublicationContent
+    ) {
+      return;
+    }
+
+    void onSubmit(
+      {
+        postType,
+        title: title.trim(),
+        slug: slug.trim(),
+        summary: summary.trim(),
+        content: content.trim(),
+        category: category.trim(),
+        allowComments,
+        sendNotification,
+        expiresAt,
+        newMedia,
+        deletedMediaIds,
+        coverSelection,
+      },
+      submitMode
+    );
+  };
+
   const handleSubmit = (
     event: FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
-
-    void onSubmit({
-      postType,
-      title: title.trim(),
-      slug: slug.trim(),
-      summary: summary.trim(),
-      content: content.trim(),
-      category: category.trim(),
-      allowComments,
-      sendNotification,
-      expiresAt,
-      newMedia,
-      deletedMediaIds,
-      coverSelection,
-    });
+    submitForm('draft');
   };
 
   return (
@@ -471,7 +523,7 @@ export default function AdminNewsEditorModal({
       aria-modal="true"
       aria-labelledby="news-editor-title"
     >
-      <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="flex max-h-[96vh] w-full max-w-[1600px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
           <div>
             <h2
@@ -645,7 +697,9 @@ export default function AdminNewsEditorModal({
 
                   <p className="mt-1 text-xs text-gray-500">
                     Загрузите файл или добавьте
-                    готовую ссылку.
+                    готовую ссылку. Для видео
+                    отдельная картинка не нужна —
+                    превью создаётся автоматически.
                   </p>
                 </div>
 
@@ -931,22 +985,68 @@ export default function AdminNewsEditorModal({
               Отмена
             </button>
 
-            <button
-              type="submit"
-              disabled={
-                isSaving ||
-                isUploading ||
-                !title.trim()
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-            >
-              {isSaving && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              {item
-                ? 'Сохранить изменения'
-                : 'Создать черновик'}
-            </button>
+            {item?.post.status === 'published' ? (
+              <button
+                type="submit"
+                disabled={
+                  isSaving ||
+                  isUploading ||
+                  !title.trim()
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isSaving && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Сохранить изменения
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    submitForm('draft')
+                  }
+                  disabled={
+                    isSaving ||
+                    isUploading ||
+                    !title.trim()
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSaving && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Сохранить черновик
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    submitForm('publish')
+                  }
+                  disabled={
+                    isSaving ||
+                    isUploading ||
+                    !title.trim() ||
+                    (!content.trim() &&
+                      !item?.post.cover_media_url &&
+                      visibleExistingMedia.length === 0 &&
+                      newMedia.length === 0)
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {item
+                    ? 'Сохранить и опубликовать'
+                    : 'Опубликовать'}
+                </button>
+              </>
+            )}
           </div>
         </form>
       </div>

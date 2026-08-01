@@ -1,12 +1,16 @@
 import {
   AlertCircle,
+  Ban,
   CheckCircle2,
   Clock3,
   Loader2,
+  RotateCcw,
   Search,
   ShieldCheck,
+  Trash2,
   UserCog,
   Users,
+  X,
 } from 'lucide-react';
 import {
   useCallback,
@@ -16,11 +20,15 @@ import {
 } from 'react';
 
 import {
+  activateUser,
+  blockUser,
   changeUserRole,
+  deleteUser,
   getUsers,
   type UserProfile,
 } from '../../../api/userApi';
 import UserAvatar from '../../../components/common/UserAvatar';
+import { useAuth } from '../../../context/AuthContext';
 
 type UserRole =
   | 'user'
@@ -157,6 +165,8 @@ async function loadAllUsers(): Promise<UserProfile[]> {
 }
 
 export default function AdminRoles() {
+  const { user: currentUser } = useAuth();
+
   const [users, setUsers] =
     useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] =
@@ -175,6 +185,16 @@ export default function AdminRoles() {
     changingUserId,
     setChangingUserId,
   ] = useState<number | null>(null);
+  const [
+    statusChangingUserId,
+    setStatusChangingUserId,
+  ] = useState<number | null>(null);
+  const [
+    userToDelete,
+    setUserToDelete,
+  ] = useState<UserProfile | null>(null);
+  const [isDeleting, setIsDeleting] =
+    useState(false);
   const [pendingRoles, setPendingRoles] =
     useState<Record<number, UserRole>>({});
 
@@ -326,6 +346,89 @@ export default function AdminRoles() {
       );
     } finally {
       setChangingUserId(null);
+    }
+  };
+
+  const handleStatusChange = async (
+    user: UserProfile
+  ) => {
+    if (currentUser?.id === user.id) {
+      setError(
+        'Нельзя заблокировать собственную учётную запись'
+      );
+      return;
+    }
+
+    setStatusChangingUserId(user.id);
+    setError(null);
+
+    try {
+      const updatedUser = user.is_active
+        ? await blockUser(user.id)
+        : await activateUser(user.id);
+
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === user.id
+            ? {
+                ...item,
+                ...updatedUser,
+              }
+            : item
+        )
+      );
+
+      setSuccessMessage(
+        user.is_active
+          ? `${getUserName(user)}: доступ заблокирован`
+          : `${getUserName(user)}: доступ восстановлен`
+      );
+    } catch (statusError) {
+      setError(getErrorMessage(statusError));
+    } finally {
+      setStatusChangingUserId(null);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) {
+      return;
+    }
+
+    if (currentUser?.id === userToDelete.id) {
+      setError(
+        'Нельзя удалить собственную учётную запись'
+      );
+      setUserToDelete(null);
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+
+    try {
+      await deleteUser(userToDelete.id);
+
+      setUsers((current) =>
+        current.filter(
+          (item) => item.id !== userToDelete.id
+        )
+      );
+
+      setPendingRoles((current) => {
+        const next = { ...current };
+        delete next[userToDelete.id];
+        return next;
+      });
+
+      setSuccessMessage(
+        `${getUserName(userToDelete)}: пользователь удалён`
+      );
+      setUserToDelete(null);
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -505,11 +608,15 @@ export default function AdminRoles() {
                 normalizeRole(user.role);
               const isChanging =
                 changingUserId === user.id;
+              const isStatusChanging =
+                statusChangingUserId === user.id;
+              const isCurrentUser =
+                currentUser?.id === user.id;
 
               return (
                 <div
                   key={user.id}
-                  className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(260px,1fr)_minmax(200px,0.7fr)_minmax(220px,0.8fr)] lg:items-center"
+                  className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,0.55fr)_minmax(220px,0.75fr)_minmax(190px,0.65fr)] lg:items-center"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <UserAvatar
@@ -601,12 +708,185 @@ export default function AdminRoles() {
                       )}
                     </div>
                   </div>
+
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Действия
+                    </p>
+
+                    <div className="flex flex-col gap-2">
+                      {currentRole !== 'user' && (
+                        <button
+                          type="button"
+                          disabled={
+                            isStatusChanging ||
+                            isCurrentUser
+                          }
+                          onClick={() =>
+                            void handleStatusChange(user)
+                          }
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            user.is_active
+                              ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                              : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                          }`}
+                          title={
+                            isCurrentUser
+                              ? 'Нельзя заблокировать собственную учётную запись'
+                              : undefined
+                          }
+                        >
+                          {isStatusChanging ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : user.is_active ? (
+                            <Ban className="h-4 w-4" />
+                          ) : (
+                            <RotateCcw className="h-4 w-4" />
+                          )}
+
+                          {user.is_active
+                            ? 'Заблокировать'
+                            : 'Активировать'}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isCurrentUser}
+                        onClick={() =>
+                          setUserToDelete(user)
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={
+                          isCurrentUser
+                            ? 'Нельзя удалить собственную учётную запись'
+                            : undefined
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {currentRole === 'user'
+                          ? 'Удалить навсегда'
+                          : 'Удалить'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {userToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-user-title"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !isDeleting
+            ) {
+              setUserToDelete(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <h2
+                    id="delete-user-title"
+                    className="text-lg font-bold text-gray-900"
+                  >
+                    Удалить пользователя?
+                  </h2>
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    {getUserName(userToDelete)}
+                    {' · '}
+                    {userToDelete.phone_number}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() =>
+                  setUserToDelete(null)
+                }
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                aria-label="Закрыть"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {normalizeRole(userToDelete.role) ===
+              'user' ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">
+                  Новый пользователь будет удалён
+                  без сохранения профиля. Это
+                  действие нельзя отменить.
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                    У пользователя уже назначена
+                    роль. Обычно его лучше
+                    заблокировать, чтобы сохранить
+                    учебную историю, связи и
+                    документы.
+                  </div>
+
+                  <p className="text-sm leading-6 text-gray-600">
+                    При продолжении будет вызвано
+                    окончательное удаление через
+                    endpoint пользователя.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-gray-50 p-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() =>
+                  setUserToDelete(null)
+                }
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Отмена
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() =>
+                  void handleDeleteUser()
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+
+                Удалить навсегда
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

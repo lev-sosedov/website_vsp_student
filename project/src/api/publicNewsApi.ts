@@ -1,3 +1,7 @@
+import {
+  getCloudinaryVideoPosterUrl,
+} from './cloudinaryApi';
+
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
@@ -18,12 +22,42 @@ export type PublicNewsPost = {
   content: string | null;
   category: string | null;
   cover_media_url: string | null;
+  cover_media_type?: string | null;
   cover_preview_url: string | null;
   is_pinned: boolean;
   is_active: boolean;
   published_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+
+export type PublicNewsMedia = {
+  id: number;
+  post_id: number;
+  media_type:
+    | 'image'
+    | 'video'
+    | 'audio'
+    | 'document'
+    | 'link'
+    | string;
+  file_url: string;
+  preview_url: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  alt_text: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
+type NewsMediaListResponse = {
+  total: number;
+  items: PublicNewsMedia[];
 };
 
 type NewsListResponse = {
@@ -108,6 +142,74 @@ export async function getPublicNews(
   return data.items ?? [];
 }
 
+
+export async function getPublicNewsBySlug(
+  slug: string
+): Promise<PublicNewsPost> {
+  const response = await fetch(
+    `${API_URL}/api/v1/posts/slug/${encodeURIComponent(slug)}`,
+    {
+      headers: {
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response)
+    );
+  }
+
+  const post =
+    (await response.json()) as PublicNewsPost;
+
+  if (
+    post.status !== 'published' ||
+    !post.is_active
+  ) {
+    throw new Error(
+      'Новость недоступна для просмотра'
+    );
+  }
+
+  return post;
+}
+
+export async function getPublicNewsMedia(
+  postId: number
+): Promise<PublicNewsMedia[]> {
+  const response = await fetch(
+    `${API_URL}/api/v1/post-media/post/${postId}?skip=0&limit=500`,
+    {
+      headers: {
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response)
+    );
+  }
+
+  const data =
+    (await response.json()) as
+      | NewsMediaListResponse
+      | PublicNewsMedia[];
+
+  const items = Array.isArray(data)
+    ? data
+    : data.items ?? [];
+
+  return [...items].sort(
+    (first, second) =>
+      first.sort_order - second.sort_order ||
+      first.id - second.id
+  );
+}
+
 export function getNewsCategory(
   post: PublicNewsPost
 ): string {
@@ -135,11 +237,31 @@ export function getNewsCategory(
 export function getNewsImage(
   post: PublicNewsPost
 ): string | null {
-  return (
-    post.cover_preview_url?.trim() ||
-    post.cover_media_url?.trim() ||
-    null
-  );
+  const previewUrl =
+    post.cover_preview_url?.trim();
+
+  if (previewUrl) {
+    return previewUrl;
+  }
+
+  const coverUrl =
+    post.cover_media_url?.trim();
+
+  if (!coverUrl) {
+    return null;
+  }
+
+  const isVideoCover =
+    post.cover_media_type === 'video' ||
+    coverUrl.includes('/video/upload/');
+
+  if (isVideoCover) {
+    return getCloudinaryVideoPosterUrl(
+      coverUrl
+    );
+  }
+
+  return coverUrl;
 }
 
 export function getNewsExcerpt(

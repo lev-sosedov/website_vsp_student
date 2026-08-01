@@ -3,18 +3,25 @@ import {
   getGroupMembers,
   getGroupStudents,
   getGroupTeacher,
+  getStudentGroupMemberships,
   type AcademicGroup,
   type GroupMember,
 } from '../api/academicApi';
 
 import {
+  getParentChildren,
+} from '../api/parentStudentApi';
+
+import {
   addChatMember,
   createChat,
   getChatMembers,
+  getChats,
 } from '../api/chatApi';
 
 import {
   getUserById,
+  getUsers,
   getUsersByIds,
   type UserProfile,
 } from '../api/userApi';
@@ -34,6 +41,9 @@ export interface MessageGroupDirectory {
   teacher: MessageDirectoryPerson | null;
   students: MessageDirectoryPerson[];
 }
+
+const parentSchoolChatsInFlight =
+  new Map<number, Promise<Chat[]>>();
 
 function joinName(
   values: Array<string | null | undefined>,
@@ -302,16 +312,210 @@ export async function loadMessageGroupDirectories(
   return directories;
 }
 
-async function findPrivateChat(
+function getChatSortTimestamp(
+  chat: Chat
+): number {
+  const updatedAt = new Date(
+    chat.updated_at
+  ).getTime();
+
+  if (Number.isFinite(updatedAt)) {
+    return updatedAt;
+  }
+
+  const createdAt = new Date(
+    chat.created_at
+  ).getTime();
+
+  return Number.isFinite(createdAt)
+    ? createdAt
+    : 0;
+}
+
+function selectPreferredChat(
+  firstChat: Chat,
+  secondChat: Chat
+): Chat {
+  const firstTimestamp =
+    getChatSortTimestamp(firstChat);
+
+  const secondTimestamp =
+    getChatSortTimestamp(secondChat);
+
+  if (firstTimestamp !== secondTimestamp) {
+    return firstTimestamp > secondTimestamp
+      ? firstChat
+      : secondChat;
+  }
+
+  return firstChat.id < secondChat.id
+    ? firstChat
+    : secondChat;
+}
+
+async function getPrivateChatPartnerId(
+  chat: Chat,
+  currentUserId: number
+): Promise<number | null> {
+  if (
+    chat.chat_type !== 'private' ||
+    !chat.is_active ||
+    chat.is_archived
+  ) {
+    return null;
+  }
+
+  const members = (
+    await getChatMembers(chat.id)
+  ).items.filter(
+    (member) => member.is_active
+  );
+
+  const participantIds = new Set(
+    members.map(
+      (member) => member.user_id
+    )
+  );
+
+  /*
+   * В некоторых версиях Communication Service
+   * создатель хранится только в created_by.
+   */
+  participantIds.add(chat.created_by);
+
+  if (!participantIds.has(currentUserId)) {
+    return null;
+  }
+
+  const partnerIds = [...participantIds]
+    .filter(
+      (userId) => userId !== currentUserId
+    );
+
+  return partnerIds.length === 1
+    ? partnerIds[0]
+    : null;
+}
+
+async function deduplicatePrivateChatsByPartner(
   chats: Chat[],
-  currentUserId: number,
-  targetUserId: number
-): Promise<Chat | null> {
-  const privateChats = chats.filter(
+  parentId: number
+): Promise<Chat[]> {
+  /*
+   * Сначала удаляем повтор одной и той же записи,
+   * если API вернул чат несколько раз из-за JOIN.
+   */
+  const uniqueChatsById = new Map<number, Chat>();
+
+  chats.forEach((chat) => {
+    const existingChat =
+      uniqueChatsById.get(chat.id);
+
+    uniqueChatsById.set(
+      chat.id,
+      existingChat
+        ? selectPreferredChat(
+            existingChat,
+            chat
+          )
+        : chat
+    );
+  });
+
+  const uniqueChats = [
+    ...uniqueChatsById.values(),
+  ];
+
+  const visiblePrivateChats = uniqueChats.filter(
     (chat) =>
       chat.chat_type === 'private' &&
       chat.is_active &&
       !chat.is_archived
+  );
+
+  const partnerResults =
+    await Promise.allSettled(
+      visiblePrivateChats.map(
+        async (chat) => ({
+          chat,
+          partnerId:
+            await getPrivateChatPartnerId(
+              chat,
+              parentId
+            ),
+        })
+      )
+    );
+
+  const chatByPartnerId =
+    new Map<number, Chat>();
+
+  const duplicateChatIds =
+    new Set<number>();
+
+  partnerResults.forEach((result) => {
+    if (
+      result.status !== 'fulfilled' ||
+      result.value.partnerId === null
+    ) {
+      return;
+    }
+
+    const { chat, partnerId } = result.value;
+    const existingChat =
+      chatByPartnerId.get(partnerId);
+
+    if (!existingChat) {
+      chatByPartnerId.set(
+        partnerId,
+        chat
+      );
+      return;
+    }
+
+    const preferredChat =
+      selectPreferredChat(
+        existingChat,
+        chat
+      );
+
+    const duplicateChat =
+      preferredChat.id === existingChat.id
+        ? chat
+        : existingChat;
+
+    chatByPartnerId.set(
+      partnerId,
+      preferredChat
+    );
+
+    duplicateChatIds.add(
+      duplicateChat.id
+    );
+  });
+
+  return uniqueChats.filter(
+    (chat) =>
+      !duplicateChatIds.has(chat.id)
+  );
+}
+
+async function findPrivateChat(
+  chats: Chat[],
+  currentUserId: number,
+  targetUserId: number,
+  includeUnavailable = false
+): Promise<Chat | null> {
+  const privateChats = chats.filter(
+    (chat) =>
+      chat.chat_type === 'private' &&
+      (
+        includeUnavailable ||
+        (
+          chat.is_active &&
+          !chat.is_archived
+        )
+      )
   );
 
   const results = await Promise.allSettled(
@@ -459,3 +663,298 @@ export async function openOrCreatePrivateChat(
 
   return chat;
 }
+
+/**
+ * Автоматически подготавливает родителю личные чаты:
+ * - с преподавателями всех активных групп его детей;
+ * - с одним действующим администратором школы.
+ *
+ * Функция безопасна для повторных вызовов: существующий чат
+ * переиспользуется, а архивный чат не создаётся повторно.
+ */
+async function ensureParentSchoolChatsInternal(
+  parentId: number,
+  chats: Chat[]
+): Promise<Chat[]> {
+  if (
+    !Number.isInteger(parentId) ||
+    parentId <= 0
+  ) {
+    return chats;
+  }
+
+  let availableChats =
+    await deduplicatePrivateChatsByPartner(
+      chats,
+      parentId
+    );
+
+  /*
+   * В React Strict Mode первая загрузка может стартовать
+   * повторно уже после завершения предыдущего запроса, но
+   * со старым снимком списка чатов. Перед созданием новых
+   * диалогов повторно читаем актуальный список с сервера и
+   * объединяем его с переданным состоянием.
+   */
+  try {
+    const latestResponse =
+      await getChats(parentId);
+
+    availableChats =
+      await deduplicatePrivateChatsByPartner(
+        [
+          ...availableChats,
+          ...latestResponse.items,
+        ],
+        parentId
+      );
+  } catch (latestChatsError) {
+    console.warn(
+      'Не удалось повторно проверить актуальные чаты родителя:',
+      latestChatsError
+    );
+  }
+
+  const targetsByUserId =
+    new Map<number, MessageDirectoryPerson>();
+
+  try {
+    const childLinks =
+      await getParentChildren(parentId, true);
+
+    const childUserIds = [
+      ...new Set(
+        childLinks
+          .filter(
+            (link) =>
+              link.is_active &&
+              link.student?.is_active !== false
+          )
+          .map((link) => link.student_id)
+          .filter(
+            (studentId) =>
+              Number.isInteger(studentId) &&
+              studentId > 0
+          )
+      ),
+    ];
+
+    const membershipsResults =
+      await Promise.allSettled(
+        childUserIds.map((studentId) =>
+          getStudentGroupMemberships(
+            studentId
+          )
+        )
+      );
+
+    const groupIds = [
+      ...new Set(
+        membershipsResults.flatMap((result) =>
+          result.status === 'fulfilled'
+            ? result.value.map(
+                (membership) =>
+                  membership.group_id
+              )
+            : []
+        )
+      ),
+    ];
+
+    const directories =
+      await loadMessageGroupDirectories(
+        groupIds
+      );
+
+    Object.values(directories).forEach(
+      (directory) => {
+        const teacher = directory.teacher;
+
+        if (
+          teacher &&
+          teacher.userId !== parentId
+        ) {
+          targetsByUserId.set(
+            teacher.userId,
+            teacher
+          );
+        }
+      }
+    );
+  } catch (teacherDirectoryError) {
+    console.warn(
+      'Не удалось подготовить чаты родителя с преподавателями:',
+      teacherDirectoryError
+    );
+  }
+
+  try {
+    const usersResponse = await getUsers({
+      limit: 1000,
+    });
+
+    const administrator =
+      usersResponse.items
+        .filter(
+          (candidate) =>
+            candidate.id !== parentId &&
+            candidate.role
+              ?.toLowerCase() === 'admin' &&
+            candidate.is_active
+        )
+        .sort(
+          (first, second) =>
+            first.id - second.id
+        )[0] ?? null;
+
+    if (administrator) {
+      targetsByUserId.set(
+        administrator.id,
+        {
+          userId: administrator.id,
+          displayName: joinName(
+            [
+              administrator.user_name,
+              administrator.last_name,
+            ],
+            'Администратор'
+          ),
+          avatarUrl:
+            administrator.avatar_url,
+          role: 'admin',
+        }
+      );
+    }
+  } catch (administratorError) {
+    console.warn(
+      'Не удалось подготовить чат родителя с администрацией:',
+      administratorError
+    );
+  }
+
+  for (const target of targetsByUserId.values()) {
+    try {
+      /*
+       * Архивный чат считается закрытым пользователем.
+       * Не создаём вместо него дубликат автоматически.
+       */
+      const existingChat =
+        await findPrivateChat(
+          availableChats,
+          parentId,
+          target.userId,
+          true
+        );
+
+      if (existingChat) {
+        continue;
+      }
+
+      const chat =
+        await openOrCreatePrivateChat(
+          availableChats,
+          parentId,
+          target
+        );
+
+      if (
+        !availableChats.some(
+          (currentChat) =>
+            currentChat.id === chat.id
+        )
+      ) {
+        availableChats.push(chat);
+      }
+    } catch (chatError) {
+      console.warn(
+        `Не удалось подготовить личный чат с пользователем №${target.userId}:`,
+        chatError
+      );
+    }
+  }
+
+  return deduplicatePrivateChatsByPartner(
+    availableChats,
+    parentId
+  );
+}
+
+
+/**
+ * Убирает повторные личные чаты с одним и тем же собеседником.
+ * Подходит для любой роли: родителя, преподавателя, студента
+ * или администратора. Групповые чаты не затрагиваются.
+ */
+export async function normalizePrivateChatList(
+  currentUserId: number,
+  chats: Chat[]
+): Promise<Chat[]> {
+  if (
+    !Number.isInteger(currentUserId) ||
+    currentUserId <= 0
+  ) {
+    return chats;
+  }
+
+  return deduplicatePrivateChatsByPartner(
+    chats,
+    currentUserId
+  );
+}
+
+export async function normalizeParentChatList(
+  parentId: number,
+  chats: Chat[]
+): Promise<Chat[]> {
+  return normalizePrivateChatList(
+    parentId,
+    chats
+  );
+}
+
+export async function ensureParentSchoolChats(
+  parentId: number,
+  chats: Chat[]
+): Promise<Chat[]> {
+  if (
+    !Number.isInteger(parentId) ||
+    parentId <= 0
+  ) {
+    return chats;
+  }
+
+  const activeRequest =
+    parentSchoolChatsInFlight.get(
+      parentId
+    );
+
+  if (activeRequest) {
+    return activeRequest;
+  }
+
+  const request =
+    ensureParentSchoolChatsInternal(
+      parentId,
+      chats
+    );
+
+  parentSchoolChatsInFlight.set(
+    parentId,
+    request
+  );
+
+  try {
+    return await request;
+  } finally {
+    if (
+      parentSchoolChatsInFlight.get(
+        parentId
+      ) === request
+    ) {
+      parentSchoolChatsInFlight.delete(
+        parentId
+      );
+    }
+  }
+}
+
