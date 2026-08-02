@@ -17,6 +17,7 @@ import {
   getUserProfile,
   type UserProfile,
 } from '../api/userApi';
+import { logoutWithRefreshToken } from '../api/authorizedClient';
 
 
 const ACCESS_TOKEN_KEY = 'vshp_access_token';
@@ -64,7 +65,7 @@ type AuthContextValue = {
     data: RegisterData
   ) => Promise<AuthResult>;
 
-  logout: () => void;
+  logout: () => Promise<void>;
 
   getAccessToken: () => string | null;
 
@@ -550,7 +551,8 @@ export function AuthProvider({
   /**
    * Локальный выход из аккаунта.
    */
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await logoutWithRefreshToken();
     clearAuthData();
   }, [clearAuthData]);
 

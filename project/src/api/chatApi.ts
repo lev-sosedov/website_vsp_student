@@ -23,6 +23,7 @@ import type {
   UpdateChatMessageRequest,
   UpdateChatRequest,
 } from '../types';
+import { authorizedFetch } from './authorizedClient';
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -56,7 +57,7 @@ async function chatRequest<T>(
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await authorizedFetch(`${API_URL}${path}`, {
     ...options,
     headers,
   });

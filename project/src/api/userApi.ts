@@ -1,6 +1,7 @@
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
+import { authorizedFetch } from './authorizedClient';
 
 export interface UserProfile {
   id: number;
@@ -115,7 +116,7 @@ async function userRequest<T>(
     );
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}${path}`,
     {
       ...options,

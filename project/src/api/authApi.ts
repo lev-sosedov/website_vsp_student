@@ -2,6 +2,8 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
 
+import { authorizedFetch } from './authorizedClient';
+
 export interface RegisterRequest {
   phone_number: string;
   password: string;
@@ -87,7 +89,7 @@ function getResponseError(
 export async function login(
   data: LoginRequest
 ): Promise<LoginResponse> {
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/auth/login`,
     {
       method: 'POST',

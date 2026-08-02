@@ -1,6 +1,7 @@
 import {
   getUsersByIds,
 } from './userApi';
+import { authorizedFetch } from './authorizedClient';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -194,7 +195,7 @@ async function request<T>(
 ): Promise<T> {
   const accessToken = getAccessToken();
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await authorizedFetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
