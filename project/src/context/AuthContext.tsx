@@ -37,10 +37,17 @@ type AuthResult = {
 };
 
 type JwtPayload = {
-  user_id?: number;
+  sub?: string;
+  user_id?: number | string;
   role?: string;
-  exp?: number;
   type?: string;
+  token_version?: number;
+  iss?: string;
+  aud?: string | string[];
+  iat?: number;
+  nbf?: number;
+  jti?: string;
+  exp?: number;
 };
 
 type AuthContextValue = {
@@ -137,15 +144,20 @@ function getUserIdFromToken(
   token: string
 ): number | null {
   const payload = decodeJwtPayload(token);
+  const rawUserId = payload?.sub ?? payload?.user_id;
+  const userId = Number(rawUserId);
 
   if (
-    !payload?.user_id ||
-    typeof payload.user_id !== 'number'
+    payload?.type !== 'access' ||
+    !Number.isInteger(userId) ||
+    userId <= 0 ||
+    !payload.exp ||
+    payload.exp * 1000 <= Date.now()
   ) {
     return null;
   }
 
-  return payload.user_id;
+  return userId;
 }
 
 /**
