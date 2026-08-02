@@ -26,7 +26,7 @@ jobs:
           cache-dependency-path: project/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: env VITE_API_URL= VITE_CHAT_WS_URL= npm run build
+      - run: env VITE_API_URL= VITE_CHAT_WS_URL= npm run build -- --mode production
       - name: Reject local production endpoints and secrets
         run: |
           if grep -RInE 'localhost:[0-9]+|127\.0\.0\.1:[0-9]+|ws://(localhost|127\.0\.0\.1)|\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY' dist; then exit 1; fi
