@@ -23,6 +23,7 @@ import {
 
 
 import { useAuth } from '../../../context/AuthContext';
+import { authorizedFetch } from '../../../api/authorizedClient';
 import {
   getActiveUserGroups,
   getGroup,
@@ -108,29 +109,14 @@ const MONTH_NAMES = [
   'декабря',
 ];
 
-function getAccessToken(): string | null {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken')
-  );
-}
-
 async function requestTeacher(
   teacherId: number
 ): Promise<Teacher> {
-  const accessToken = getAccessToken();
-
-  const response = await fetch(
+    const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${teacherId}`,
     {
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken
-          ? {
-              Authorization: `Bearer ${accessToken}`,
-            }
-          : {}),
       },
     }
   );

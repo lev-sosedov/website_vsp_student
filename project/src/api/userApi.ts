@@ -1,6 +1,7 @@
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
+import { authorizedFetch } from './authorizedClient';
 
 export interface UserProfile {
   id: number;
@@ -61,15 +62,6 @@ const userProfileCache =
 const pendingUserRequests =
   new Map<number, Promise<UserProfile>>();
 
-function getAccessToken(): string {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken') ??
-    ''
-  );
-}
-
 async function getUserApiError(
   response: Response,
   fallbackMessage: string
@@ -96,7 +88,6 @@ async function userRequest<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = getAccessToken();
   const headers = new Headers(options.headers);
 
   headers.set('Accept', 'application/json');
@@ -108,14 +99,7 @@ async function userRequest<T>(
     );
   }
 
-  if (accessToken) {
-    headers.set(
-      'Authorization',
-      `Bearer ${accessToken}`
-    );
-  }
-
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}${path}`,
     {
       ...options,
@@ -145,19 +129,13 @@ async function userRequest<T>(
 
 async function requestUserProfile(
   userId: number,
-  accessToken: string
+  _accessToken?: string
 ): Promise<UserProfile> {
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${userId}`,
     {
       headers: {
         Accept: 'application/json',
-        ...(accessToken
-          ? {
-              Authorization:
-                `Bearer ${accessToken}`,
-            }
-          : {}),
       },
     }
   );
@@ -193,7 +171,6 @@ async function requestUserProfile(
 export async function getUsers(
   filters: UserListFilters = {}
 ): Promise<UserListResponse> {
-  const accessToken = getAccessToken();
   const searchParams = new URLSearchParams();
 
   searchParams.set(
@@ -216,17 +193,11 @@ export async function getUsers(
     );
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/?${searchParams.toString()}`,
     {
       headers: {
         Accept: 'application/json',
-        ...(accessToken
-          ? {
-              Authorization:
-                `Bearer ${accessToken}`,
-            }
-          : {}),
       },
     }
   );
@@ -302,7 +273,7 @@ export async function getUserById(
 
   const request = requestUserProfile(
     userId,
-    getAccessToken()
+    undefined
   )
     .then((user) => {
       userProfileCache.set(userId, user);
@@ -366,21 +337,14 @@ export async function updateUserProfile(
   userId: number,
   data: UserProfileUpdate
 ): Promise<UserProfile> {
-  const accessToken = getAccessToken();
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${userId}`,
     {
       method: 'PATCH',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        ...(accessToken
-          ? {
-              Authorization:
-                `Bearer ${accessToken}`,
-            }
-          : {}),
       },
       body: JSON.stringify(data),
     }

@@ -1,3 +1,4 @@
+import { authorizedFetch } from './authorizedClient';
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
@@ -45,15 +46,6 @@ export interface CreateParentStudentLinkRequest {
   relationship: ParentRelationship;
 }
 
-function getAccessToken(): string {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken') ??
-    ''
-  );
-}
-
 async function getApiError(
   response: Response,
   fallbackMessage: string
@@ -85,7 +77,6 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getAccessToken();
   const headers = new Headers(options.headers);
 
   headers.set('Accept', 'application/json');
@@ -97,14 +88,7 @@ async function request<T>(
     );
   }
 
-  if (token) {
-    headers.set(
-      'Authorization',
-      `Bearer ${token}`
-    );
-  }
-
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}${path}`,
     {
       ...options,

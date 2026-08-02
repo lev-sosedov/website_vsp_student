@@ -1,3 +1,4 @@
+import { authorizedFetch } from './authorizedClient';
 const API_URL = import.meta.env.VITE_API_URL;
 
 export type LessonStatus =
@@ -240,14 +241,6 @@ interface FastApiErrorResponse {
   }>;
 }
 
-function getAccessToken(): string | null {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken')
-  );
-}
-
 function getErrorMessage(
   errorData: FastApiErrorResponse | null,
   response: Response
@@ -273,17 +266,10 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = getAccessToken();
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await authorizedFetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken
-        ? {
-            Authorization: `Bearer ${accessToken}`,
-          }
-        : {}),
       ...options.headers,
     },
   });

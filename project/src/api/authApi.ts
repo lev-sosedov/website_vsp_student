@@ -2,6 +2,8 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
 
+import { authorizedFetch } from './authorizedClient';
+
 export interface RegisterRequest {
   phone_number: string;
   password: string;
@@ -32,15 +34,6 @@ export interface ChangePasswordRequest {
 
 export interface ChangePasswordResponse {
   message: string;
-}
-
-function getAccessToken(): string {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken') ??
-    ''
-  );
 }
 
 async function readResponse(response: Response) {
@@ -87,7 +80,7 @@ function getResponseError(
 export async function login(
   data: LoginRequest
 ): Promise<LoginResponse> {
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/auth/login`,
     {
       method: 'POST',
@@ -142,22 +135,13 @@ export async function register(
 export async function changePassword(
   data: ChangePasswordRequest
 ): Promise<ChangePasswordResponse> {
-  const accessToken = getAccessToken();
-
-  if (!accessToken) {
-    throw new Error(
-      'Не удалось определить текущую сессию'
-    );
-  }
-
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/auth/change-password`,
     {
       method: 'PATCH',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(data),
     }

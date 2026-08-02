@@ -23,6 +23,7 @@ import type {
   UpdateChatMessageRequest,
   UpdateChatRequest,
 } from '../types';
+import { authorizedFetch } from './authorizedClient';
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -31,10 +32,6 @@ const API_URL =
 /**
  * Получает access token из localStorage.
  */
-function getAccessToken(): string {
-  return localStorage.getItem('vshp_access_token') ?? '';
-}
-
 /**
  * Универсальный запрос к communication-service.
  */
@@ -42,8 +39,6 @@ async function chatRequest<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = getAccessToken();
-
   const headers = new Headers(options.headers);
 
   headers.set('Accept', 'application/json');
@@ -52,11 +47,7 @@ async function chatRequest<T>(
     headers.set('Content-Type', 'application/json');
   }
 
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
-  }
-
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await authorizedFetch(`${API_URL}${path}`, {
     ...options,
     headers,
   });
