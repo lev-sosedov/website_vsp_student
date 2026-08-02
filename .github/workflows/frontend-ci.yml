@@ -29,6 +29,24 @@ jobs:
       - run: env VITE_API_URL= VITE_CHAT_WS_URL= npm run build -- --mode production
       - name: Reject local production endpoints and secrets
         run: |
-          if grep -RInE 'localhost:[0-9]+|127\.0\.0\.1:[0-9]+|ws://(localhost|127\.0\.0\.1)|\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY' dist; then exit 1; fi
+          python - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          pattern = re.compile(
+              r"localhost:[0-9]+|127\\.0\\.0\\.1:[0-9]+|ws://(localhost|127\\.0\\.0\\.1)|\\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY"
+          )
+          hits = []
+          for path in Path("dist").rglob("*"):
+              if path.is_file():
+                  text = path.read_text(errors="ignore")
+                  if pattern.search(text):
+                      hits.append(str(path))
+          if hits:
+              print("forbidden production bundle content:")
+              print("\\n".join(hits))
+              sys.exit(1)
+          PY
       - name: Build production image
         run: docker build --build-arg VITE_API_URL= --build-arg VITE_CHAT_WS_URL=wss://vsp-student.ru -t vsp-frontend:ci .
