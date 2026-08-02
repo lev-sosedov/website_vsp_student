@@ -32,10 +32,6 @@ const API_URL =
 /**
  * Получает access token из localStorage.
  */
-function getAccessToken(): string {
-  return localStorage.getItem('vshp_access_token') ?? '';
-}
-
 /**
  * Универсальный запрос к communication-service.
  */
@@ -43,18 +39,12 @@ async function chatRequest<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = getAccessToken();
-
   const headers = new Headers(options.headers);
 
   headers.set('Accept', 'application/json');
 
   if (options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
-  }
-
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
   const response = await authorizedFetch(`${API_URL}${path}`, {

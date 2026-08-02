@@ -115,29 +115,14 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
 
-function getAccessToken(): string | null {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken')
-  );
-}
-
 async function academicRequest<T>(
   endpoint: string
 ): Promise<T> {
-  const accessToken = getAccessToken();
-
     const response = await authorizedFetch(
     `${API_URL}${endpoint}`,
     {
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken
-          ? {
-              Authorization: `Bearer ${accessToken}`,
-            }
-          : {}),
       },
     }
   );

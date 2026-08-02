@@ -46,15 +46,6 @@ export interface CreateParentStudentLinkRequest {
   relationship: ParentRelationship;
 }
 
-function getAccessToken(): string {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken') ??
-    ''
-  );
-}
-
 async function getApiError(
   response: Response,
   fallbackMessage: string
@@ -86,7 +77,6 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getAccessToken();
   const headers = new Headers(options.headers);
 
   headers.set('Accept', 'application/json');
@@ -95,13 +85,6 @@ async function request<T>(
     headers.set(
       'Content-Type',
       'application/json'
-    );
-  }
-
-  if (token) {
-    headers.set(
-      'Authorization',
-      `Bearer ${token}`
     );
   }
 

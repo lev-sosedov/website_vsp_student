@@ -56,14 +56,6 @@ interface FastApiErrorResponse {
       }>;
 }
 
-function getAccessToken(): string | null {
-  return (
-    localStorage.getItem('vshp_access_token') ??
-    localStorage.getItem('access_token') ??
-    localStorage.getItem('accessToken')
-  );
-}
-
 function validateId(
   id: number,
   fieldName: string
@@ -113,8 +105,6 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = getAccessToken();
-
   const response = await authorizedFetch(
     `${API_URL}${endpoint}`,
     {
@@ -122,12 +112,6 @@ async function request<T>(
       headers: {
         'Content-Type': 'application/json',
 
-        ...(accessToken
-          ? {
-              Authorization:
-                `Bearer ${accessToken}`,
-            }
-          : {}),
 
         ...options.headers,
       },
