@@ -97,7 +97,8 @@ const getDefaultWebSocketBaseUrl = (): string => {
     return configuredUrl.replace(/\/+$/, '');
   }
 
-  return 'ws://localhost:8006';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
 };
 
 export class ChatSocket {

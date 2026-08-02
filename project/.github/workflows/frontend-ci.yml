@@ -1,0 +1,29 @@
+name: frontend-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Reject local production endpoints and secrets
+        run: |
+          if grep -RInE 'localhost|127\.0\.0\.1|\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY' dist; then exit 1; fi
+      - name: Build production image
+        run: docker build --build-arg VITE_API_URL= --build-arg VITE_CHAT_WS_URL=wss://vsp-student.ru -t vsp-frontend:ci .

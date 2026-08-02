@@ -1,6 +1,6 @@
 const API_URL =
   import.meta.env.VITE_API_URL ||
-  'http://localhost:8080';
+  '';
 import { authorizedFetch } from './authorizedClient';
 
 export interface UserProfile {
