@@ -23,6 +23,7 @@ import {
 
 
 import { useAuth } from '../../../context/AuthContext';
+import { authorizedFetch } from '../../../api/authorizedClient';
 import {
   getActiveUserGroups,
   getGroup,
@@ -121,7 +122,7 @@ async function requestTeacher(
 ): Promise<Teacher> {
   const accessToken = getAccessToken();
 
-  const response = await fetch(
+    const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${teacherId}`,
     {
       headers: {

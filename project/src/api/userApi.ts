@@ -148,7 +148,7 @@ async function requestUserProfile(
   userId: number,
   accessToken: string
 ): Promise<UserProfile> {
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${userId}`,
     {
       headers: {
@@ -217,7 +217,7 @@ export async function getUsers(
     );
   }
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/?${searchParams.toString()}`,
     {
       headers: {
@@ -369,7 +369,7 @@ export async function updateUserProfile(
 ): Promise<UserProfile> {
   const accessToken = getAccessToken();
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/users/${userId}`,
     {
       method: 'PATCH',

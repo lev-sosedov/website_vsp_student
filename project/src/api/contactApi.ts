@@ -1,3 +1,4 @@
+import { authorizedFetch } from './authorizedClient';
 const API_URL =
   import.meta.env.VITE_API_URL ||
   'http://localhost:8080';
@@ -56,7 +57,7 @@ async function getErrorMessage(
 export async function sendContactMessage(
   payload: ContactMessagePayload
 ): Promise<ContactMessageResponse> {
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}/api/v1/notifications/contact`,
     {
       method: 'POST',

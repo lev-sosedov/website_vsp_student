@@ -1,3 +1,4 @@
+import { authorizedFetch } from './authorizedClient';
 const API_URL = import.meta.env.VITE_API_URL;
 
 export type AttachmentType = string;
@@ -209,7 +210,7 @@ async function request<T>(
 ): Promise<T> {
   const accessToken = getAccessToken();
 
-  const response = await fetch(
+  const response = await authorizedFetch(
     `${API_URL}${endpoint}`,
     {
       ...options,
