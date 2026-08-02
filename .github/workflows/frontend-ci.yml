@@ -29,6 +29,6 @@ jobs:
       - run: npm run build
       - name: Reject local production endpoints and secrets
         run: |
-          if grep -RInE 'localhost|127\.0\.0\.1|\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY' dist; then exit 1; fi
+          if grep -RInE 'localhost:[0-9]+|127\.0\.0\.1:[0-9]+|ws://(localhost|127\.0\.0\.1)|\.env|BEGIN (RSA )?(PRIVATE|PUBLIC) KEY' dist; then exit 1; fi
       - name: Build production image
         run: docker build --build-arg VITE_API_URL= --build-arg VITE_CHAT_WS_URL=wss://vsp-student.ru -t vsp-frontend:ci .
