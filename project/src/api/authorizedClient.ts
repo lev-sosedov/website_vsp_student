@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || '';
 const ACCESS_TOKEN_KEY = 'vshp_access_token';
 const REFRESH_TOKEN_KEY = 'vshp_refresh_token';
 const USER_KEY = 'vshp_user';

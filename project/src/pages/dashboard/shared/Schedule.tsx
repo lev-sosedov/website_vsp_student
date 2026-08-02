@@ -39,7 +39,7 @@ import {
 
 import StudentLessonDetailsModal from '../../../components/dashboard/student/StudentLessonDetailsModal';
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface Teacher {
   id: number;
