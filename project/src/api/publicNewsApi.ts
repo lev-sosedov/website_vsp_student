@@ -42,6 +42,7 @@ export type PublicNewsMedia = {
     | 'document'
     | 'link'
     | string;
+  resource_type?: string | null;
   file_url: string;
   preview_url: string | null;
   file_name: string | null;
@@ -54,6 +55,20 @@ export type PublicNewsMedia = {
   sort_order: number;
   created_at: string;
 };
+
+function normalizeMediaType(media: PublicNewsMedia): PublicNewsMedia {
+  const raw = (media.media_type || media.resource_type || '').toLowerCase();
+  if (raw === 'video' || media.mime_type?.startsWith('video/') || media.file_url.includes('/video/upload/')) {
+    return { ...media, media_type: 'video' };
+  }
+  if (raw === 'image' || media.mime_type?.startsWith('image/')) {
+    return { ...media, media_type: 'image' };
+  }
+  if (raw === 'audio' || media.mime_type?.startsWith('audio/')) {
+    return { ...media, media_type: 'audio' };
+  }
+  return media;
+}
 
 type NewsMediaListResponse = {
   total: number;
@@ -203,7 +218,7 @@ export async function getPublicNewsMedia(
     ? data
     : data.items ?? [];
 
-  return [...items].sort(
+  return items.map(normalizeMediaType).sort(
     (first, second) =>
       first.sort_order - second.sort_order ||
       first.id - second.id

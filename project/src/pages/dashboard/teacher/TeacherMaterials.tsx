@@ -10,7 +10,6 @@ import {
   FileText,
   Link as LinkIcon,
   Loader2,
-  Plus,
   Search,
   Send,
 } from 'lucide-react';
@@ -1003,21 +1002,6 @@ export default function TeacherMaterials() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setModalError(null);
-            setMaterialModal({
-              mode: 'create',
-              item: null,
-            });
-          }}
-          disabled={!hasLessons}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
-        >
-          <Plus className="h-4 w-4" />
-          Добавить материал
-        </button>
       </div>
 
       {error && (

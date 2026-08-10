@@ -59,7 +59,7 @@ export default function Navbar() {
               <Link
                 key={link.to}
                 to={link.to}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-2 rounded-lg text-[15px] font-medium transition-colors ${
                   location.pathname === link.to
                     ? 'text-red-600'
                     : 'text-gray-600 hover:text-gray-900'
