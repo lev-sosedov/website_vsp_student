@@ -1,3 +1,5 @@
+import { getAccessToken } from './authorizedClient';
+
 export type ChatSocketStatus =
   | 'connecting'
   | 'connected'
@@ -103,8 +105,6 @@ const getDefaultWebSocketBaseUrl = (): string => {
 
 export class ChatSocket {
   private readonly chatId: number;
-  private readonly userId: number;
-
   private readonly callbacks: ChatSocketCallbacks;
 
   private readonly reconnectEnabled: boolean;
@@ -119,10 +119,12 @@ export class ChatSocket {
 
   private reconnectAttempt = 0;
   private manualDisconnect = false;
+  private authenticationRejected = false;
 
   constructor(options: ChatSocketOptions) {
     this.chatId = options.chatId;
-    this.userId = options.userId;
+    // Kept in the public options for caller compatibility; identity comes from JWT.
+    void options.userId;
 
     this.reconnectEnabled = options.reconnect ?? true;
     this.reconnectDelay = options.reconnectDelay ?? 1_000;
@@ -162,6 +164,7 @@ export class ChatSocket {
     }
 
     this.manualDisconnect = false;
+    this.authenticationRejected = false;
     this.clearReconnectTimer();
 
     const status: ChatSocketStatus =
@@ -170,9 +173,21 @@ export class ChatSocket {
     this.callbacks.onStatusChange?.(status);
 
     const socketUrl = this.buildSocketUrl();
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      this.authenticationRejected = true;
+      this.callbacks.onStatusChange?.('error');
+      this.callbacks.onError?.('?????????? ??????????? ????');
+      return;
+    }
 
     try {
-      this.socket = new WebSocket(socketUrl);
+      // Browser WebSocket cannot set Authorization headers. The token is sent
+      // through a negotiated subprotocol and never placed in the URL/query.
+      this.socket = new WebSocket(socketUrl, [
+        'vshp.jwt',
+        `vshp.jwt.${accessToken}`,
+      ]);
     } catch (error) {
       const message =
         error instanceof Error
@@ -203,14 +218,26 @@ export class ChatSocket {
       this.callbacks.onError?.('Ошибка WebSocket-соединения');
     };
 
-    this.socket.onclose = () => {
+    this.socket.onclose = (event: CloseEvent) => {
       this.stopPing();
       this.socket = null;
 
-      this.callbacks.onStatusChange?.('disconnected');
-      this.callbacks.onDisconnected?.();
+      const authenticationRejected =
+        event.code === 4401 || event.code === 4403;
+      if (authenticationRejected) {
+        this.authenticationRejected = true;
+        this.callbacks.onStatusChange?.('error');
+        this.callbacks.onError?.(
+          event.code === 4401
+            ? '??????????? ???? ?????????'
+            : '??? ??????? ? ????? ????'
+        );
+      } else {
+        this.callbacks.onStatusChange?.('disconnected');
+        this.callbacks.onDisconnected?.();
+      }
 
-      if (!this.manualDisconnect) {
+      if (!this.manualDisconnect && !this.authenticationRejected) {
         this.scheduleReconnect();
       }
     };
@@ -263,8 +290,6 @@ export class ChatSocket {
     const url = new URL(
       `${baseUrl}/ws/chats/${this.chatId}`,
     );
-
-    url.searchParams.set('user_id', String(this.userId));
 
     return url.toString();
   }

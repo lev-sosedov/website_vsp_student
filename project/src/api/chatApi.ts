@@ -100,6 +100,37 @@ async function chatRequest<T>(
 // Chats
 // =====================================================
 
+export interface ChatParticipantProfile {
+  user_id: number;
+  role: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
+const chatParticipantCache = new Map<number, ChatParticipantProfile[]>();
+const pendingChatParticipantRequests = new Map<number, Promise<ChatParticipantProfile[]>>();
+
+export async function getChatParticipants(
+  chatId: number
+): Promise<ChatParticipantProfile[]> {
+  const cached = chatParticipantCache.get(chatId);
+  if (cached) return cached;
+  const pending = pendingChatParticipantRequests.get(chatId);
+  if (pending) return pending;
+  const request = chatRequest<{ items: ChatParticipantProfile[] }>(
+    `/api/v1/chats/${chatId}/participants`
+  ).then((response) => {
+    chatParticipantCache.set(chatId, response.items);
+    return response.items;
+  }).finally(() => {
+    pendingChatParticipantRequests.delete(chatId);
+  });
+  pendingChatParticipantRequests.set(chatId, request);
+  return request;
+}
+
+
 export async function createChat(
   data: CreateChatRequest
 ): Promise<Chat> {
