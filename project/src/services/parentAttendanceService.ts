@@ -1,11 +1,12 @@
 import {
   getGroup,
-  getStudentGroupMemberships,
+  getParentChildGroupMemberships,
 } from '../api/academicApi';
 
 import {
-  getStudentAttendance,
+  getParentChildAttendance,
   type AttendanceRecord,
+  type AttendanceListResponse,
 } from '../api/attendanceApi';
 
 import {
@@ -120,17 +121,15 @@ export async function loadParentChildAttendance(
 
   const warnings: string[] = [];
 
-  const [
-    memberships,
-    attendanceResponse,
-  ] = await Promise.all([
-    getStudentGroupMemberships(
-      studentId
-    ),
-    getStudentAttendance(
-      studentId
-    ),
-  ]);
+  const memberships = await getParentChildGroupMemberships(studentId);
+  const attendanceResponses = await Promise.all(
+    Array.from(new Set(memberships.map((membership) => membership.group_id)))
+      .map((groupId) => getParentChildAttendance(studentId, groupId))
+  );
+  const attendanceResponse: AttendanceListResponse = {
+    total: attendanceResponses.reduce((total, response) => total + response.items.length, 0),
+    items: attendanceResponses.flatMap((response) => response.items),
+  };
 
   const lessonIds = Array.from(
     new Set(

@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -542,8 +543,11 @@ export default function ParentSchedule() {
     }, [parentId]);
 
 
+  const childLoadSequence = useRef(0);
+
   const loadSchedule =
     useCallback(async () => {
+      const sequence = ++childLoadSequence.current;
       if (
         selectedChildId === null
       ) {
@@ -563,6 +567,7 @@ export default function ParentSchedule() {
             weekStart,
             weekEnd
           );
+        if (sequence !== childLoadSequence.current) return;
 
         setData(
           loadedData
@@ -580,6 +585,7 @@ export default function ParentSchedule() {
               : null
         );
       } catch (error) {
+        if (sequence !== childLoadSequence.current) return;
         setData(
           EMPTY_DATA
         );
@@ -587,7 +593,9 @@ export default function ParentSchedule() {
           getErrorMessage(error)
         );
       } finally {
-        setLoadingSchedule(false);
+        if (sequence === childLoadSequence.current) {
+          setLoadingSchedule(false);
+        }
       }
     }, [
       selectedChildId,

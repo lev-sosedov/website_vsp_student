@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ВШП Студент">
+  <rect width="64" height="64" rx="14" fill="#dc2626"/>
+  <path fill="#fff" d="M10 27 32 16l22 11-22 11-22-11Zm9 5v10c7 6 19 7 26 0V32l-13 6-13-6Z"/>
+</svg>

@@ -1,6 +1,6 @@
 import {
   getGroup,
-  getStudentGroupMemberships,
+  getParentChildGroupMemberships,
 } from '../api/academicApi';
 
 import {
@@ -10,7 +10,7 @@ import {
 
 import {
   formatLocalDate,
-  getGroupLessonsByDateRange,
+  getParentChildGroupLessons,
   getRoom,
   type LessonSchedule,
 } from '../api/scheduleApi';
@@ -158,9 +158,7 @@ export async function loadParentChildSchedule(
   const warnings: string[] = [];
 
   const memberships =
-    await getStudentGroupMemberships(
-      studentId
-    );
+    await getParentChildGroupMemberships(studentId);
 
   const groupIds = Array.from(
     new Set(
@@ -238,11 +236,7 @@ export async function loadParentChildSchedule(
   const lessonResults =
     await Promise.allSettled(
       groups.map((group) =>
-        getGroupLessonsByDateRange(
-          group.id,
-          dateFromString,
-          dateToString
-        )
+        getParentChildGroupLessons(studentId, group.id, { dateFrom: dateFromString, dateTo: dateToString }).then((response) => response.items)
       )
     );
 

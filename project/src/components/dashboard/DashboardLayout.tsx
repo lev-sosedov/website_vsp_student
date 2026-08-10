@@ -344,7 +344,7 @@ export default function DashboardLayout({
       >
         <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
           <NavLink
-            to="/dashboard"
+            to="/"
             onClick={() => setOpen(false)}
             className="flex items-center gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
             aria-label="Перейти на дашборд"

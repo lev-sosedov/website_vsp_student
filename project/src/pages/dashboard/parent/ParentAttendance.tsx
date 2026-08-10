@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -569,8 +570,11 @@ export default function ParentAttendance() {
     }, [parentId]);
 
 
+  const childLoadSequence = useRef(0);
+
   const loadAttendance =
     useCallback(async () => {
+      const sequence = ++childLoadSequence.current;
       if (
         selectedChildId === null
       ) {
@@ -586,6 +590,7 @@ export default function ParentAttendance() {
           await loadParentChildAttendance(
             selectedChildId
           );
+        if (sequence !== childLoadSequence.current) return;
 
         setData(result);
 
@@ -627,12 +632,15 @@ export default function ParentAttendance() {
           }
         }
       } catch (error) {
+        if (sequence !== childLoadSequence.current) return;
         setData(EMPTY_DATA);
         setAttendanceError(
           getErrorMessage(error)
         );
       } finally {
-        setLoadingAttendance(false);
+        if (sequence === childLoadSequence.current) {
+          setLoadingAttendance(false);
+        }
       }
     }, [selectedChildId]);
 

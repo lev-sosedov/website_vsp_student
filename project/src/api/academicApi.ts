@@ -268,6 +268,14 @@ export async function getStudentGroupMemberships(
 /**
  * Получить информацию о группе.
  */
+
+export async function getParentChildGroupMemberships(
+  studentId: number
+): Promise<GroupMember[]> {
+  if (!Number.isInteger(studentId) || studentId <= 0) throw new Error("Неверный ID ребёнка");
+  return request<GroupMember[]>(`/api/v1/group-members/parent/children/${studentId}`);
+}
+
 export async function getGroup(
   groupId: number
 ): Promise<AcademicGroup> {

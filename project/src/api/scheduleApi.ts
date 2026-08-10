@@ -397,6 +397,22 @@ export async function getGroupLessonsByDateRange(
 /**
  * Получает одно занятие по ID.
  */
+
+export async function getParentChildGroupLessons(
+  studentId: number,
+  groupId: number,
+  params: { dateFrom?: string; dateTo?: string } = {}
+): Promise<LessonListResponse> {
+  if (!Number.isInteger(studentId) || studentId <= 0 || !Number.isInteger(groupId) || groupId <= 0) {
+    throw new Error("Неверный ID ребёнка или группы");
+  }
+  const query = new URLSearchParams();
+  if (params.dateFrom) query.set("lesson_date_from", params.dateFrom);
+  if (params.dateTo) query.set("lesson_date_to", params.dateTo);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<LessonListResponse>(`/api/v1/lessons/parent/children/${studentId}/groups/${groupId}${suffix}`);
+}
+
 export async function getLesson(
   lessonId: number
 ): Promise<LessonSchedule> {
