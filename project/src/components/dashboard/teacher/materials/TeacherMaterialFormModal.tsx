@@ -18,6 +18,7 @@ export interface TeacherMaterialFormValues {
   summary: string;
   content: string;
   publishImmediately: boolean;
+  file?: File;
 }
 
 interface TeacherMaterialFormModalProps {
@@ -97,6 +98,9 @@ export default function TeacherMaterialFormModal({
     initialValues?.content ?? ''
   );
 
+  const [file, setFile] = useState<File | undefined>();
+  const [fileError, setFileError] = useState<string | null>(null);
+
   const [
     publishImmediately,
     setPublishImmediately,
@@ -173,6 +177,7 @@ export default function TeacherMaterialFormModal({
               summary: summary.trim(),
               content: content.trim(),
               publishImmediately,
+              file,
             });
           }}
         >
@@ -262,6 +267,42 @@ export default function TeacherMaterialFormModal({
               className="h-11 w-full rounded-xl border border-gray-200 px-4 text-sm outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 disabled:bg-gray-50"
             />
           </label>
+
+          {mode === 'create' && (
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">
+                Файл материала (необязательно)
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.mov,.zip,.rar,.7z,.tar,.gz"
+                disabled={isSaving}
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0];
+                  setFileError(null);
+                  if (nextFile && nextFile.size > 100 * 1024 * 1024) {
+                    setFile(undefined);
+                    setFileError('Размер файла не должен превышать 100 МБ');
+                    event.target.value = '';
+                    return;
+                  }
+                  setFile(nextFile);
+                }}
+                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm"
+              />
+              <span className="block text-xs text-gray-500">
+                Поддерживаются PDF, Word, Excel, презентации, изображения, видео и архивы.
+              </span>
+              {file && (
+                <span className="block text-xs text-gray-700">
+                  Выбран файл: {file.name}
+                </span>
+              )}
+              {fileError && (
+                <span className="block text-xs text-red-600">{fileError}</span>
+              )}
+            </label>
+          )}
 
           <label className="space-y-2">
             <span className="text-sm font-medium text-gray-700">

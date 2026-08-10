@@ -36,9 +36,14 @@ import {
   updateLessonAttachment,
   updateLessonContent,
   updateLessonLink,
+  type CreateLessonAttachmentData,
   type LessonAttachment,
   type LessonLink,
 } from '../../../api/contentApi';
+import {
+  detectAttachmentType,
+  uploadMaterialFileToCloudinary,
+} from '../../../api/cloudinaryApi';
 import {
   getGroupLessons,
 } from '../../../api/scheduleApi';
@@ -548,7 +553,7 @@ export default function TeacherMaterials() {
         materialModal.mode ===
         'create'
       ) {
-        await createLessonContent({
+        const createdContent = await createLessonContent({
           lesson_id: values.lessonId,
           title: values.title,
           summary:
@@ -560,8 +565,32 @@ export default function TeacherMaterials() {
             values.publishImmediately,
         });
 
+        let uploadError: string | null = null;
+        if (values.file) {
+          try {
+            const upload = await uploadMaterialFileToCloudinary(values.file);
+            const attachment: CreateLessonAttachmentData = {
+              lesson_content_id: createdContent.id,
+              title: values.file.name,
+              attachment_type: detectAttachmentType(values.file),
+              file_url: upload.secure_url,
+              file_name: upload.original_filename ?? values.file.name,
+              mime_type: values.file.type || 'application/octet-stream',
+              file_size: upload.bytes ?? values.file.size,
+              sort_order: 0,
+              is_visible: true,
+              uploaded_by: teacherId,
+            };
+            await createLessonAttachment(attachment);
+          } catch (fileError) {
+            uploadError = getErrorMessage(fileError);
+          }
+        }
+
         showSuccess(
-          'Материал успешно создан'
+          uploadError
+            ? `Материал создан, но файл не добавлен: ${uploadError}`
+            : 'Материал успешно создан'
         );
       } else if (materialModal.item) {
         await updateLessonContent(
