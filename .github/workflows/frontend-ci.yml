@@ -25,8 +25,9 @@ jobs:
           cache: npm
           cache-dependency-path: project/package-lock.json
       - run: npm ci
+      - run: python scripts/check_cloudinary_build.py
       - run: npm run typecheck
-      - run: env VITE_API_URL= VITE_CHAT_WS_URL= npm run build -- --mode production
+      - run: env VITE_API_URL= VITE_CHAT_WS_URL= VITE_CLOUDINARY_CLOUD_NAME=CHANGE_ME_CLOUDINARY_CLOUD_NAME VITE_CLOUDINARY_UPLOAD_PRESET=CHANGE_ME_CLOUDINARY_UNSIGNED_UPLOAD_PRESET npm run build -- --mode production
       - name: Reject local production endpoints and secrets
         run: |
           python - <<'PY'
@@ -49,4 +50,4 @@ jobs:
               sys.exit(1)
           PY
       - name: Build production image
-        run: docker build --build-arg VITE_API_URL= --build-arg VITE_CHAT_WS_URL=wss://vsp-student.ru -t vsp-frontend:ci .
+        run: docker build --build-arg VITE_API_URL= --build-arg VITE_CHAT_WS_URL=wss://vsp-student.ru --build-arg VITE_CLOUDINARY_CLOUD_NAME=CHANGE_ME_CLOUDINARY_CLOUD_NAME --build-arg VITE_CLOUDINARY_UPLOAD_PRESET=CHANGE_ME_CLOUDINARY_UNSIGNED_UPLOAD_PRESET -t vsp-frontend:ci .

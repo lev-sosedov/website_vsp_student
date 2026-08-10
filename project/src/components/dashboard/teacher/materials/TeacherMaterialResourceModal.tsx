@@ -165,7 +165,7 @@ export default function TeacherMaterialResourceModal({
 
               {!isCloudinaryConfigured() && (
                 <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                  Для загрузки добавьте Cloudinary-параметры в project/.env. Ручная ссылка ниже продолжит работать.
+                  Для загрузки добавьте Cloudinary-параметры в конфигурацию приложения. Ручная ссылка ниже продолжит работать.
                 </p>
               )}
 
