@@ -15,7 +15,7 @@ import {
 } from '../api/parentStudentApi';
 
 import {
-  getLesson,
+  getParentChildGroupLessons,
   type LessonSchedule,
 } from '../api/scheduleApi';
 
@@ -131,45 +131,21 @@ export async function loadParentChildAttendance(
     items: attendanceResponses.flatMap((response) => response.items),
   };
 
-  const lessonIds = Array.from(
-    new Set(
-      attendanceResponse.items.map(
-        (record) => record.lesson_id
-      )
+
+  const lessonResults = await Promise.allSettled(
+    Array.from(new Set(memberships.map((membership) => membership.group_id))).map(
+      (groupId) => getParentChildGroupLessons(studentId, groupId)
     )
   );
 
-  const lessonResults =
-    await Promise.allSettled(
-      lessonIds.map((lessonId) =>
-        getLesson(lessonId)
-      )
-    );
-
-  const lessonById = new Map<
-    number,
-    LessonSchedule | null
-  >();
-
-  lessonResults.forEach(
-    (result, index) => {
-      const lessonId =
-        lessonIds[index];
-
-      lessonById.set(
-        lessonId,
-        result.status === 'fulfilled'
-          ? result.value
-          : null
-      );
+  const lessonById = new Map<number, LessonSchedule>();
+  lessonResults.forEach((result) => {
+    if (result.status === 'fulfilled') {
+      result.value.items.forEach((lesson) => lessonById.set(lesson.id, lesson));
     }
-  );
+  });
 
-  const failedLessons =
-    lessonResults.filter(
-      (result) =>
-        result.status === 'rejected'
-    ).length;
+  const failedLessons = lessonResults.filter((result) => result.status === 'rejected').length;
 
   if (failedLessons > 0) {
     warnings.push(
@@ -262,10 +238,7 @@ export async function loadParentChildAttendance(
         (
           attendance
         ): ParentAttendanceRow => {
-          const lesson =
-            lessonById.get(
-              attendance.lesson_id
-            ) ?? null;
+          const lesson = lessonById.get(attendance.lesson_id) ?? null;
 
           const groupId =
             lesson?.group_id ?? null;
