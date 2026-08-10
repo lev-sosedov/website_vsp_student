@@ -22,6 +22,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -831,8 +832,11 @@ export default function ParentHomework() {
     }, [parentId]);
 
 
+  const childLoadSequence = useRef(0);
+
   const loadHomework =
     useCallback(async () => {
+      const sequence = ++childLoadSequence.current;
       if (
         selectedChildId === null
       ) {
@@ -850,6 +854,7 @@ export default function ParentHomework() {
           await loadParentChildHomework(
             selectedChildId
           );
+        if (sequence !== childLoadSequence.current) return;
 
         setResult(
           loadedResult
@@ -867,6 +872,7 @@ export default function ParentHomework() {
               : null
         );
       } catch (error) {
+        if (sequence !== childLoadSequence.current) return;
         setResult(
           EMPTY_RESULT
         );
@@ -874,7 +880,9 @@ export default function ParentHomework() {
           getErrorMessage(error)
         );
       } finally {
-        setLoadingHomework(false);
+        if (sequence === childLoadSequence.current) {
+          setLoadingHomework(false);
+        }
       }
     }, [selectedChildId]);
 

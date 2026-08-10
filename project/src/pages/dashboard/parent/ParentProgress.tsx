@@ -22,6 +22,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -688,8 +689,11 @@ export default function ParentProgress() {
     }, [parentId]);
 
 
+  const childLoadSequence = useRef(0);
+
   const loadProgress =
     useCallback(async () => {
+      const sequence = ++childLoadSequence.current;
       if (
         selectedChildId === null
       ) {
@@ -707,6 +711,7 @@ export default function ParentProgress() {
           await loadParentChildProgress(
             selectedChildId
           );
+        if (sequence !== childLoadSequence.current) return;
 
         setData(
           loadedData
@@ -724,6 +729,7 @@ export default function ParentProgress() {
               : null
         );
       } catch (error) {
+        if (sequence !== childLoadSequence.current) return;
         setData(
           EMPTY_DATA
         );
@@ -731,7 +737,9 @@ export default function ParentProgress() {
           getErrorMessage(error)
         );
       } finally {
-        setLoadingProgress(false);
+        if (sequence === childLoadSequence.current) {
+          setLoadingProgress(false);
+        }
       }
     }, [selectedChildId]);
 
