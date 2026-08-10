@@ -28,9 +28,9 @@ import {
 
 import {
   archiveChat,
+  getChatParticipants,
   deleteChatMessage,
   ensureStudentAdminChat,
-  getChatMembers,
   getChatMessages,
   getChats,
   markChatAsRead,
@@ -52,7 +52,6 @@ import {
 import {
   clearUserProfileCache,
   getUserById,
-  getUsersByIds,
   type UserProfile,
 } from '../../../api/userApi';
 
@@ -60,6 +59,9 @@ import type {
   Chat,
   ChatMessage,
 } from '../../../types';
+import type { ChatParticipantProfile } from '../../../api/chatApi';
+
+type MessageProfile = UserProfile | ChatParticipantProfile;
 
 import { useAuth } from '../../../context/AuthContext';
 
@@ -269,7 +271,7 @@ function areCountMapsEqual(
 }
 
 function getUserDisplayName(
-  user: UserProfile | undefined,
+  user: MessageProfile | undefined,
   fallbackUserId?: number | string
 ): string {
   const fallback =
@@ -281,6 +283,10 @@ function getUserDisplayName(
 
   if (!user) {
     return fallback;
+  }
+
+  if ('display_name' in user) {
+    return user.display_name || fallback;
   }
 
   const role = user.role?.toLowerCase();
@@ -342,7 +348,7 @@ function getUserDisplayName(
 function getDisplayChatTitle(
   chat: Chat,
   groupNamesById: Record<number, string>,
-  privateChatPartner?: UserProfile
+  privateChatPartner?: MessageProfile
 ): string {
   if (
     chat.chat_type === 'private' &&
@@ -359,7 +365,7 @@ function getDisplayChatTitle(
 function getMessagePreview(
   message: ChatMessage,
   currentUserId: number | null,
-  usersById: Record<number, UserProfile>
+  usersById: Record<number, MessageProfile>
 ): string {
   if (message.is_deleted) {
     return 'Сообщение удалено';
@@ -633,12 +639,12 @@ export default function Messages() {
     useState<Set<number>>(new Set());
 
   const [usersById, setUsersById] =
-    useState<Record<number, UserProfile>>({});
+    useState<Record<number, MessageProfile>>({});
 
   const [
     privateChatPartnersByChatId,
     setPrivateChatPartnersByChatId,
-  ] = useState<Record<number, UserProfile>>({});
+  ] = useState<Record<number, MessageProfile>>({});
 
   const [
     groupDirectoriesById,
@@ -1406,56 +1412,25 @@ export default function Messages() {
   );
 
   useEffect(() => {
-    const userIds = [
-      ...new Set([
-        ...chatMessages.map(
-          (message) => message.sender_id
-        ),
-        ...typingUserIds,
-        ...onlineUserIds,
-      ]),
-    ].filter(
-      (userId) =>
-        userId > 0 &&
-        !usersById[userId]
-    );
-
-    if (userIds.length === 0) {
+    if (activeChatId === null) {
       return;
     }
-
     let isCancelled = false;
-
-    void getUsersByIds(userIds)
-      .then((loadedUsers) => {
-        if (
-          isCancelled ||
-          Object.keys(loadedUsers).length === 0
-        ) {
-          return;
-        }
-
+    void getChatParticipants(activeChatId)
+      .then((participants) => {
+        if (isCancelled) return;
         setUsersById((currentUsers) => ({
           ...currentUsers,
-          ...loadedUsers,
+          ...Object.fromEntries(
+            participants.map((participant) => [participant.user_id, participant])
+          ),
         }));
       })
-      .catch((userError) => {
-        console.error(
-          'Не удалось загрузить данные пользователей:',
-          userError
-        );
+      .catch((profileError) => {
+        console.error('?? ??????? ????????? ??????? ?????????? ????:', profileError);
       });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    chatMessages,
-    typingUserIds,
-    onlineUserIds,
-    usersById,
-  ]);
+    return () => { isCancelled = true; };
+  }, [activeChatId]);
 
   useEffect(() => {
     void loadChats();
@@ -1614,94 +1589,32 @@ export default function Messages() {
       setPrivateChatPartnersByChatId({});
       return;
     }
-
     const privateChats = chats.filter(
-      (chat) =>
-        chat.chat_type === 'private' &&
-        chat.is_active &&
-        !chat.is_archived
+      (chat) => chat.chat_type === 'private' && chat.is_active && !chat.is_archived
     );
-
     if (privateChats.length === 0) {
       setPrivateChatPartnersByChatId({});
       return;
     }
-
     let isCancelled = false;
-
     void Promise.allSettled(
-      privateChats.map(async (chat) => {
-        const members = (
-          await getChatMembers(chat.id)
-        ).items.filter(
-          (member) =>
-            member.is_active &&
-            member.user_id !== currentUserId
+      privateChats.map(async (chat) => ({
+        chatId: chat.id,
+        participants: await getChatParticipants(chat.id),
+      }))
+    ).then((results) => {
+      if (isCancelled) return;
+      const nextPartners: Record<number, MessageProfile> = {};
+      results.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        const partner = result.value.participants.find(
+          (participant) => participant.user_id !== currentUserId
         );
-
-        return {
-          chatId: chat.id,
-          partnerUserId:
-            members[0]?.user_id ?? null,
-        };
-      })
-    ).then(async (memberResults) => {
-      const chatPartnerIds: Array<{
-        chatId: number;
-        partnerUserId: number;
-      }> = [];
-
-      memberResults.forEach((result) => {
-        if (
-          result.status === 'fulfilled' &&
-          result.value.partnerUserId !== null
-        ) {
-          chatPartnerIds.push({
-            chatId: result.value.chatId,
-            partnerUserId:
-              result.value.partnerUserId,
-          });
-        }
+        if (partner) nextPartners[result.value.chatId] = partner;
       });
-
-      const profiles = await getUsersByIds(
-        chatPartnerIds.map(
-          (entry) => entry.partnerUserId
-        )
-      );
-
-      if (isCancelled) {
-        return;
-      }
-
-      const nextPartners: Record<
-        number,
-        UserProfile
-      > = {};
-
-      chatPartnerIds.forEach(
-        ({ chatId, partnerUserId }) => {
-          const profile =
-            profiles[partnerUserId];
-
-          if (profile) {
-            nextPartners[chatId] = profile;
-          }
-        }
-      );
-
-      setPrivateChatPartnersByChatId(
-        (currentPartners) =>
-          JSON.stringify(currentPartners) ===
-          JSON.stringify(nextPartners)
-            ? currentPartners
-            : nextPartners
-      );
+      setPrivateChatPartnersByChatId(nextPartners);
     });
-
-    return () => {
-      isCancelled = true;
-    };
+    return () => { isCancelled = true; };
   }, [chats, currentUserId]);
 
   useEffect(() => {
