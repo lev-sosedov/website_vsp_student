@@ -45,8 +45,9 @@ export default function ParentDashboard() {
   }, [selectedId]);
 
   const selected = children.find((child) => child.id === selectedId);
-  const average = data.homeworkItems.length
-    ? Math.round(data.homeworkItems.reduce((sum, item) => sum + (item.submission?.score ?? 0), 0) / data.homeworkItems.length)
+  const gradedItems = data.homeworkItems.filter((item) => item.submission?.score !== null && item.submission?.score !== undefined);
+  const average = gradedItems.length
+    ? Math.round(gradedItems.reduce((sum, item) => sum + (item.submission?.score ?? 0), 0) / gradedItems.length)
     : null;
 
   return (
@@ -68,7 +69,7 @@ export default function ParentDashboard() {
       {!selected ? <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-gray-500">Связанные дети не найдены.</div> : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <div className="card p-5"><BookOpen className="h-5 w-5 text-red-600"/><p className="mt-3 text-sm text-gray-500">Средний результат</p><p className="text-2xl font-bold">{average === null ? '—' : `${average}%`}</p></div>
+            <div className="card p-5"><BookOpen className="h-5 w-5 text-red-600"/><p className="mt-3 text-sm text-gray-500">Средний балл</p><p className="text-2xl font-bold">{average === null ? '—' : `${average}`}</p></div>
             <div className="card p-5"><CheckCircle2 className="h-5 w-5 text-green-600"/><p className="mt-3 text-sm text-gray-500">Посещаемость</p><p className="text-2xl font-bold">{data.attendanceItems.length}</p></div>
             <div className="card p-5"><GraduationCap className="h-5 w-5 text-violet-600"/><p className="mt-3 text-sm text-gray-500">Активные группы</p><p className="text-2xl font-bold">{data.groups.length}</p></div>
             <div className="card p-5"><Clock3 className="h-5 w-5 text-amber-600"/><p className="mt-3 text-sm text-gray-500">Задания</p><p className="text-2xl font-bold">{data.homeworkItems.length}</p></div>

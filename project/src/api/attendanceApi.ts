@@ -164,6 +164,19 @@ export async function getLessonAttendance(
   );
 }
 
+
+export async function getParentChildAttendance(
+  studentId: number,
+  groupId: number,
+  skip = 0,
+  limit = 500
+): Promise<AttendanceListResponse> {
+  validateId(studentId, "student ID");
+  validateId(groupId, "group ID");
+  const query = new URLSearchParams({ group_id: String(groupId), skip: String(skip), limit: String(limit) });
+  return request<AttendanceListResponse>(`/api/v1/attendance/parent/children/${studentId}?${query.toString()}`);
+}
+
 export async function createAttendance(
   data: CreateAttendanceData
 ): Promise<AttendanceRecord> {

@@ -384,6 +384,25 @@ export async function getStudentSubmissions(
   return response.items;
 }
 
+
+export async function getParentChildHomeworks(
+  studentId: number,
+  groupId: number
+): Promise<HomeworkListResponse> {
+  validateId(studentId, "student ID");
+  validateId(groupId, "group ID");
+  return request<HomeworkListResponse>(`/api/v1/homeworks/parent/children/${studentId}/groups/${groupId}`);
+}
+
+export async function getParentChildSubmissions(
+  studentId: number,
+  groupId: number
+): Promise<HomeworkSubmissionListResponse> {
+  validateId(studentId, "student ID");
+  validateId(groupId, "group ID");
+  return request<HomeworkSubmissionListResponse>(`/api/v1/homework-submissions/parent/children/${studentId}/groups/${groupId}`);
+}
+
 export async function getVisibleHomeworkAttachments(
   homeworkId: number
 ): Promise<HomeworkAttachment[]> {

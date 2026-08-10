@@ -1,6 +1,6 @@
 import {
   getGroup,
-  getStudentGroupMemberships,
+  getParentChildGroupMemberships,
 } from '../api/academicApi';
 
 import {
@@ -9,10 +9,13 @@ import {
 } from '../api/parentStudentApi';
 
 import {
-  loadStudentHomeworks,
+
   type StudentHomeworkData,
   type StudentHomeworkGroup,
+  type StudentHomeworkItem,
 } from './homeworkService';
+import { getParentChildHomeworks, getParentChildSubmissions } from '../api/homeworkApi';
+import { getParentChildGroupLessons } from '../api/scheduleApi';
 
 
 export interface ParentHomeworkChild {
@@ -59,7 +62,32 @@ function getChildName(
 }
 
 
-export async function loadParentHomeworkChildren(
+
+async function loadParentHomeworkData(
+  groups: StudentHomeworkGroup[],
+  studentId: number,
+): Promise<StudentHomeworkData> {
+  const perGroup = await Promise.all(groups.map(async (group) => {
+    const [lessonResponse, homeworkResponse, submissionResponse] = await Promise.all([
+      getParentChildGroupLessons(studentId, group.id),
+      getParentChildHomeworks(studentId, group.id),
+      getParentChildSubmissions(studentId, group.id),
+    ]);
+    const lessons = lessonResponse.items;
+    const lessonsById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
+    const submissionsByHomework = new Map(submissionResponse.items.map((submission) => [submission.homework_id, submission]));
+    return homeworkResponse.items.flatMap((homework): StudentHomeworkItem[] => {
+      const lesson = lessonsById.get(homework.lesson_id);
+      if (!lesson) return [];
+      return [{ homework, lesson, submission: submissionsByHomework.get(homework.id) ?? null, attachments: [], groupId: group.id, groupName: group.name }];
+    });
+  }));
+  const items = perGroup.flat().sort((first, second) => (first.homework.due_at ?? first.lesson.lesson_date).localeCompare(second.homework.due_at ?? second.lesson.lesson_date));
+  const isGraded = (item: StudentHomeworkItem) => item.submission?.status === 'accepted' || item.submission?.status === 'rejected';
+  const isSubmitted = (item: StudentHomeworkItem) => item.submission?.status === 'submitted' || item.submission?.status === 'in_review';
+  const isOverdue = (item: StudentHomeworkItem) => Boolean(item.homework.due_at && !isGraded(item) && !isSubmitted(item) && new Date(item.homework.due_at).getTime() < Date.now());
+  return { items, pendingCount: items.filter((item) => !isGraded(item) && !isSubmitted(item) && !isOverdue(item)).length, submittedCount: items.filter(isSubmitted).length, gradedCount: items.filter(isGraded).length, overdueCount: items.filter(isOverdue).length };
+}export async function loadParentHomeworkChildren(
   parentId: number
 ): Promise<ParentHomeworkChild[]> {
   if (
@@ -116,7 +144,7 @@ export async function loadParentChildHomework(
   const warnings: string[] = [];
 
   const memberships =
-    await getStudentGroupMemberships(
+    await getParentChildGroupMemberships(
       studentId
     );
 
@@ -189,10 +217,7 @@ export async function loadParentChildHomework(
       );
 
   const homework =
-    await loadStudentHomeworks(
-      groups,
-      studentId
-    );
+    await loadParentHomeworkData(groups, studentId);
 
   return {
     groups,
