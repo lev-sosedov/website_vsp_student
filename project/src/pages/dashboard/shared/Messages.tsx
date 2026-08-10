@@ -64,7 +64,6 @@ import type {
 import { useAuth } from '../../../context/AuthContext';
 
 import {
-  ensureParentSchoolChats,
   loadMessageGroupDirectories,
   normalizeParentChatList,
   normalizePrivateChatList,
@@ -970,14 +969,6 @@ export default function Messages() {
 
       const normalizedRole =
         user?.role?.toLowerCase();
-
-      if (normalizedRole === 'parent') {
-        allChats =
-          await ensureParentSchoolChats(
-            currentUserId,
-            allChats
-          );
-      }
 
       /*
        * Один родитель может быть связан с ребёнком сразу
