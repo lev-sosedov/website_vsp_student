@@ -26,6 +26,14 @@ export interface UserListResponse {
   items: UserProfile[];
 }
 
+export interface ScopedStaffProfile {
+  user_id: number;
+  role: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
 export interface UserListFilters {
   role?: string;
   isActive?: boolean;
@@ -166,6 +174,19 @@ async function requestUserProfile(
   }
 
   return response.json() as Promise<UserProfile>;
+}
+
+export async function getScopedStaff(): Promise<ScopedStaffProfile[]> {
+  const response = await authorizedFetch(
+    `${API_URL}/api/v1/users/staff/scoped`,
+    { headers: { Accept: 'application/json' } }
+  );
+  if (!response.ok) {
+    throw new Error(await getUserApiError(response, `\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432: ${response.status}`));
+  }
+  const data = (await response.json()) as unknown;
+  if (!Array.isArray(data)) throw new Error('\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 \u043e\u0442\u0432\u0435\u0442 \u0441\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a\u0430 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432');
+  return data.filter((item): item is ScopedStaffProfile => typeof item === 'object' && item !== null && typeof (item as ScopedStaffProfile).user_id === 'number' && typeof (item as ScopedStaffProfile).role === 'string' && typeof (item as ScopedStaffProfile).display_name === 'string' && (item as ScopedStaffProfile).is_active === true);
 }
 
 export async function getUsers(
