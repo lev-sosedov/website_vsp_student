@@ -1,7 +1,5 @@
-import {
-  getUsersByIds,
-} from './userApi';
 import { authorizedFetch } from './authorizedClient';
+import type { UserProfile } from './userApi';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -29,6 +27,9 @@ export interface GroupStudent {
   first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+  about?: string | null;
 
   is_active: boolean;
 }
@@ -181,6 +182,24 @@ interface AcademicListResponse<T> {
   total?: number;
 }
 
+function normalizeApiError(raw: string, status: number, statusText: string): string {
+  try {
+    const payload = JSON.parse(raw) as { detail?: unknown; message?: unknown };
+    const detail = payload.detail ?? payload.message;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const messages = detail.map((item) => typeof item === 'string' ? item : (item as { msg?: unknown })?.msg).filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+      if (messages.length) return messages.join('; ');
+    }
+    if (detail && typeof detail === 'object') {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+  } catch {
+    // Fall through to the status-based message for non-JSON responses.
+  }
+  return raw.trim() || `Ошибка Academic API: ${status} ${statusText}`;
+}
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -196,10 +215,7 @@ async function request<T>(
   if (!response.ok) {
     const errorText = await response.text();
 
-    throw new Error(
-      errorText ||
-        `Ошибка Academic API: ${response.status} ${response.statusText}`
-    );
+    throw new Error(normalizeApiError(errorText, response.status, response.statusText));
   }
 
   return response.json() as Promise<T>;
@@ -445,43 +461,25 @@ export async function getGroupMembers(
 export async function getGroupStudents(
   groupId: number
 ): Promise<GroupStudentListResponse> {
-  const response =
-    await request<GroupStudentListResponse>(
+  return request<GroupStudentListResponse>(
     `/api/v1/group-members/group/${groupId}/students`
   );
+}
 
-  const profiles = await getUsersByIds(
-    response.items.map(
-      (student) => student.user_id
-    )
-  );
-
+export async function getTeacherStudentProfile(
+  studentId: number
+): Promise<UserProfile> {
+  const profile = await request<{
+    id: number; role: string; user_name: string | null; first_name: string | null;
+    last_name: string | null; avatar_url: string | null; phone_number: string | null;
+    email: string | null; about: string | null; is_active: boolean;
+  }>(`/api/v1/group-members/teacher/student/${studentId}`);
   return {
-    ...response,
-    items: response.items.map((student) => {
-      const profile =
-        profiles[student.user_id];
-
-      if (!profile) {
-        return student;
-      }
-
-      return {
-        ...student,
-        user_name:
-          profile.user_name ??
-          student.user_name,
-        first_name:
-          profile.first_name ??
-          student.first_name,
-        last_name:
-          profile.last_name ??
-          student.last_name,
-        avatar_url:
-          profile.avatar_url ??
-          student.avatar_url,
-      };
-    }),
+    id: profile.id, phone_number: profile.phone_number ?? '', user_name: profile.user_name ?? '',
+    email: profile.email, first_name: profile.first_name, last_name: profile.last_name,
+    birthday: null, avatar_url: profile.avatar_url, about: profile.about, role: profile.role,
+    is_active: profile.is_active, is_account_verified: true, is_phone_verified: false,
+    created_at: '', updated_at: '',
   };
 }
 

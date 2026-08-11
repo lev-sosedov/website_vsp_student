@@ -32,7 +32,6 @@ import {
 } from '../../../api/chatApi';
 
 import {
-  getUserById,
   type UserProfile,
 } from '../../../api/userApi';
 
@@ -51,6 +50,7 @@ import {
   getDirection,
   getGroup,
   getGroupStudents,
+  getTeacherStudentProfile,
   type AcademicDirection,
   type AcademicGroup,
   type GroupStudent,
@@ -101,14 +101,6 @@ interface BranchAddressResponse {
   city?: string | null;
   house?: string | number | null;
   building?: string | number | null;
-}
-
-interface UserProfileResponse {
-  id: number;
-  user_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  avatar_url?: string | null;
 }
 
 const API_URL =
@@ -179,27 +171,6 @@ async function getEducationPlan(
   return null;
 }
 
-async function getUserProfile(
-  userId: number
-): Promise<UserProfileResponse | null> {
-  const candidateEndpoints = [
-    `/api/v1/users/${userId}`,
-    `/api/v1/users/id/${userId}`,
-  ];
-
-  for (const endpoint of candidateEndpoints) {
-    try {
-      return await academicRequest<
-        UserProfileResponse
-      >(endpoint);
-    } catch {
-      // Пробуем следующий поддерживаемый маршрут.
-    }
-  }
-
-  return null;
-}
-
 async function enrichGroupStudents(
   students: GroupStudent[]
 ): Promise<GroupStudent[]> {
@@ -217,7 +188,7 @@ async function enrichGroupStudents(
       }
 
       const profile =
-        await getUserProfile(student.user_id);
+        await getTeacherStudentProfile(student.user_id);
 
       if (!profile) {
         return student;
@@ -898,7 +869,7 @@ export default function TeacherGroups() {
 
         try {
           const profile =
-            await getUserById(
+            await getTeacherStudentProfile(
               student.user_id
             );
 

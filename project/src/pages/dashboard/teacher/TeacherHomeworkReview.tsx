@@ -28,10 +28,8 @@ import {
   type HomeworkSubmission,
   type HomeworkSubmissionStatus,
 } from '../../../api/homeworkApi';
-import {
-  getUsersByIds,
-  type UserProfile,
-} from '../../../api/userApi';
+import type { UserProfile } from '../../../api/userApi';
+import { getTeacherStudentProfile } from '../../../api/academicApi';
 import TeacherHomeworkManagement from '../../../components/dashboard/teacher/homework/TeacherHomeworkManagement';
 
 type FilterStatus = 'all' | HomeworkSubmissionStatus;
@@ -174,13 +172,12 @@ export default function TeacherHomeworkReview() {
             homework.created_by === teacherId
         );
 
-      const studentProfiles =
-        await getUsersByIds(
-          teacherItems.map(
-            ({ submission }) =>
-              submission.student_id
-          )
-        );
+      const studentIds = [...new Set(teacherItems.map(({ submission }) => submission.student_id))];
+      const profileResults = await Promise.allSettled(studentIds.map((studentId) => getTeacherStudentProfile(studentId)));
+      const studentProfiles: Record<number, UserProfile> = {};
+      profileResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') studentProfiles[studentIds[index]] = result.value;
+      });
 
       setItems(
         teacherItems.map((item) => ({

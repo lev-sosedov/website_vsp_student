@@ -47,7 +47,6 @@ import {
   getGroupLessons,
 } from '../../../api/scheduleApi';
 import {
-  getUserById,
   type UserProfile,
 } from '../../../api/userApi';
 import TeacherMaterialCard, {
@@ -256,13 +255,9 @@ export default function TeacherMaterials() {
 
         const [
           memberships,
-          profile,
           contents,
         ] = await Promise.all([
           getActiveUserGroups(teacherId),
-          getUserById(teacherId).catch(
-            () => null
-          ),
           getLessonContents({
             createdBy: teacherId,
             skip: 0,
@@ -386,7 +381,7 @@ export default function TeacherMaterials() {
                   groupName:
                     lessonInfo.groupName,
                   teacherName:
-                    getTeacherName(profile),
+                    getTeacherName(user),
                   attachments:
                     attachments.sort(
                       (first, second) =>
@@ -423,7 +418,7 @@ export default function TeacherMaterials() {
         setGroups(groupResults);
         setItems(nextItems);
         setTeacherName(
-          getTeacherName(profile)
+          getTeacherName(user)
         );
       } catch (loadError) {
         setGroups([]);
