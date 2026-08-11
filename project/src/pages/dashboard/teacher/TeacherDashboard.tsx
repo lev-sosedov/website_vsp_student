@@ -26,7 +26,8 @@ import {
   getActiveUserGroups,
   getDirection,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
+  getTeacherStudentProfile,
   type AcademicDirection,
   type AcademicGroup,
   type GroupStudent,
@@ -59,7 +60,6 @@ import {
 } from '../../../api/scheduleApi';
 
 import {
-  getUserById,
   type UserProfile,
 } from '../../../api/userApi';
 
@@ -270,7 +270,7 @@ export default function TeacherDashboard() {
             direction,
             homeworks,
           ] = await Promise.all([
-            getGroupStudents(membership.group_id),
+            getTeacherGroupStudents(membership.group_id),
 
             group.direction_id
               ? getDirection(group.direction_id)
@@ -660,7 +660,7 @@ export default function TeacherDashboard() {
 
       const [profileResult, parentsResult] =
         await Promise.allSettled([
-          getUserById(studentId),
+          getTeacherStudentProfile(studentId),
           getStudentParents(studentId),
         ]);
 
@@ -755,7 +755,7 @@ export default function TeacherDashboard() {
         profile.id !== studentId
       ) {
         try {
-          profile = await getUserById(studentId);
+          profile = await getTeacherStudentProfile(studentId);
         } catch {
           profile = null;
         }

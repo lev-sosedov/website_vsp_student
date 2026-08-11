@@ -29,7 +29,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   getActiveUserGroups,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
   type AcademicGroup,
   type GroupStudent,
 } from '../../../api/academicApi';
@@ -573,7 +573,7 @@ export default function TeacherAttendance() {
           studentsResponse,
         ] = await Promise.all([
           getGroupLessons(groupId),
-          getGroupStudents(groupId),
+          getTeacherGroupStudents(groupId),
         ]);
 
         if (cancelled) {

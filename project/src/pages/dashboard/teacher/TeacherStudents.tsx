@@ -33,14 +33,13 @@ import {
 import {
   getActiveUserGroups,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
+  getTeacherStudentProfile,
   type AcademicGroup,
   type GroupStudent,
 } from '../../../api/academicApi';
 
 import {
-  getUserById,
-  getUsersByIds,
   type UserProfile,
 } from '../../../api/userApi';
 
@@ -232,7 +231,7 @@ export default function TeacherStudents() {
               studentsResponse,
             ] = await Promise.all([
               getGroup(membership.group_id),
-              getGroupStudents(
+              getTeacherGroupStudents(
                 membership.group_id
               ),
             ]);
@@ -257,16 +256,8 @@ export default function TeacherStudents() {
         )
       );
 
-      const profiles = await getUsersByIds(
-        loadedGroups.flatMap((groupItem) =>
-          groupItem.students.map(
-            (student) => student.user_id
-          )
-        )
-      );
-
       setGroups(loadedGroups);
-      setStudentProfiles(profiles);
+      setStudentProfiles({});
 
       if (
         selectedGroupId !== null &&
@@ -485,7 +476,7 @@ export default function TeacherStudents() {
       setIsProfileLoading(true);
 
       try {
-        const profile = await getUserById(
+        const profile = await getTeacherStudentProfile(
           studentItem.student.user_id
         );
 
