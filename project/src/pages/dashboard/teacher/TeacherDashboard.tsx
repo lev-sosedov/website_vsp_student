@@ -26,7 +26,7 @@ import {
   getActiveUserGroups,
   getDirection,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
   getTeacherStudentProfile,
   type AcademicDirection,
   type AcademicGroup,
@@ -270,7 +270,7 @@ export default function TeacherDashboard() {
             direction,
             homeworks,
           ] = await Promise.all([
-            getGroupStudents(membership.group_id),
+            getTeacherGroupStudents(membership.group_id),
 
             group.direction_id
               ? getDirection(group.direction_id)

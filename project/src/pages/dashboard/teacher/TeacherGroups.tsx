@@ -49,7 +49,7 @@ import {
   getActiveUserGroups,
   getDirection,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
   getTeacherStudentProfile,
   type AcademicDirection,
   type AcademicGroup,
@@ -653,7 +653,7 @@ export default function TeacherGroups() {
                   getGroup(
                     membership.group_id
                   ),
-                  getGroupStudents(
+                  getTeacherGroupStudents(
                     membership.group_id
                   ),
                 ]);

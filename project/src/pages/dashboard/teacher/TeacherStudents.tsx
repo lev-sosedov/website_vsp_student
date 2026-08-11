@@ -33,7 +33,7 @@ import {
 import {
   getActiveUserGroups,
   getGroup,
-  getGroupStudents,
+  getTeacherGroupStudents,
   getTeacherStudentProfile,
   type AcademicGroup,
   type GroupStudent,
@@ -231,7 +231,7 @@ export default function TeacherStudents() {
               studentsResponse,
             ] = await Promise.all([
               getGroup(membership.group_id),
-              getGroupStudents(
+              getTeacherGroupStudents(
                 membership.group_id
               ),
             ]);

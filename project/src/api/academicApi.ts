@@ -466,6 +466,13 @@ export async function getGroupStudents(
   );
 }
 
+export async function getTeacherGroupStudents(
+  groupId: number
+): Promise<GroupStudentListResponse & { items: Array<GroupStudent & { phone_number?: string | null; email?: string | null; about?: string | null }> }> {
+  return request(
+    `/api/v1/group-members/teacher/group/${groupId}/students`
+  );
+}
 export async function getTeacherStudentProfile(
   studentId: number
 ): Promise<UserProfile> {
